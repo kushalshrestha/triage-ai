@@ -1,0 +1,5 @@
+{"ticket_text": "I was charged twice for my subscription this month.", "expected_label": "billing"}
+{"ticket_text": "The app crashes every time I try to upload a photo.", "expected_label": "bug"}
+{"ticket_text": "How do I change my account email address?", "expected_label": "account"}
+{"ticket_text": "Can you add dark mode to the dashboard?", "expected_label": "feature_request"}
+{"ticket_text": "My data export has been stuck at 0% for two days.", "expected_label": "bug"}
