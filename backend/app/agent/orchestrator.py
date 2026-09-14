@@ -1,7 +1,8 @@
 from sqlalchemy.orm import Session
 
 from app.agent.classify import classify_ticket
-from app.agent.drafting import generate_draft
+from app.agent.drafting import DraftOutput, DraftSchemaError, generate_draft
+from app.agent.judge import assess_groundedness
 from app.agent.tools import get_account_context
 from app.config import get_settings
 from app.guardrails.injection import is_likely_injection
@@ -86,23 +87,58 @@ def run_triage(db: Session, ticket: Ticket) -> AgentDecision:
 
     category = classify_ticket(redacted_text)
     decision_type = decide_outcome(top_similarity)
+    # Captured before schema/groundedness can change decision_type below,
+    # so this guardrail row reflects what it actually checked: retrieval
+    # confidence, not downstream draft quality.
+    routing_passed = decision_type != DecisionType.ESCALATE
 
-    models_used = [f"ollama/{settings.ollama_model_name}"]
-    draft_text = None
+    models_used: list[str] = [f"ollama/{settings.ollama_model_name}"]
+
+    draft: DraftOutput | None = None
+    schema_valid: bool | None = None
+    schema_error: str | None = None
+    groundedness_passed: bool | None = None
+    groundedness_raw: str | None = None
+
     if decision_type in (DecisionType.DRAFT_FOR_REVIEW, DecisionType.AUTO_RESPOND):
         account_context = get_account_context(db, ticket.requester)
-        draft_text = generate_draft(
-            ticket, [chunk.content for chunk, _score in retrieved], account_context
-        )
-        models_used.append(settings.claude_model_name)
+        context_texts = [chunk.content for chunk, _score in retrieved]
 
-    similarity_display = f"{top_similarity:.2f}" if top_similarity is not None else "n/a"
+        if settings.claude_model_name not in models_used:
+            models_used.append(settings.claude_model_name)
+
+        try:
+            draft = generate_draft(ticket, context_texts, account_context)
+            schema_valid = True
+        except DraftSchemaError as exc:
+            schema_valid = False
+            schema_error = str(exc)
+            decision_type = DecisionType.ESCALATE
+
+        if draft is not None:
+            groundedness_passed, groundedness_raw = assess_groundedness(
+                draft.reply_text, context_texts
+            )
+            if not groundedness_passed and decision_type == DecisionType.AUTO_RESPOND:
+                decision_type = DecisionType.DRAFT_FOR_REVIEW
+
+    reasoning_parts = [
+        f"classified as '{category}'",
+        f"top retrieval similarity={top_similarity:.2f}" if top_similarity is not None else "no retrieval match",
+    ]
+    if schema_valid is False:
+        reasoning_parts.append(f"draft schema validation failed: {schema_error}")
+    if groundedness_passed is not None:
+        reasoning_parts.append(
+            "groundedness=passed" if groundedness_passed else "groundedness=failed (downgraded from auto_respond)"
+        )
+
     decision = AgentDecision(
         ticket_id=ticket.id,
         decision_type=decision_type,
         model_used=",".join(models_used),
         confidence_score=top_similarity,
-        reasoning=f"classified as '{category}'; top retrieval similarity={similarity_display}",
+        reasoning="; ".join(reasoning_parts),
     )
     db.add(decision)
     db.flush()
@@ -123,7 +159,7 @@ def run_triage(db: Session, ticket: Ticket) -> AgentDecision:
             agent_decision_id=decision.id,
             stage=GuardrailStage.OUTPUT,
             check_type=GuardrailCheckType.CONFIDENCE_THRESHOLD,
-            passed=decision_type != DecisionType.ESCALATE,
+            passed=routing_passed,
             details={
                 "top_similarity": top_similarity,
                 "draft_threshold": settings.draft_confidence_threshold,
@@ -132,12 +168,41 @@ def run_triage(db: Session, ticket: Ticket) -> AgentDecision:
         )
     )
 
-    if draft_text is not None:
+    if schema_valid is not None:
+        db.add(
+            GuardrailCheck(
+                ticket_id=ticket.id,
+                agent_decision_id=decision.id,
+                stage=GuardrailStage.OUTPUT,
+                check_type=GuardrailCheckType.SCHEMA_VALIDATION,
+                passed=schema_valid,
+                details={"error": schema_error} if schema_error else None,
+            )
+        )
+
+    if groundedness_passed is not None:
+        db.add(
+            GuardrailCheck(
+                ticket_id=ticket.id,
+                agent_decision_id=decision.id,
+                stage=GuardrailStage.OUTPUT,
+                check_type=GuardrailCheckType.GROUNDEDNESS,
+                passed=groundedness_passed,
+                details={"judge_raw_verdict": groundedness_raw},
+            )
+        )
+
+    if draft is not None and schema_valid:
         db.add(
             TicketEvent(
                 ticket_id=ticket.id,
                 event_type=TicketEventType.DRAFT_GENERATED,
-                payload={"draft": draft_text, "decision_type": decision_type.value},
+                payload={
+                    "reply_text": draft.reply_text,
+                    "cited_chunk_indices": draft.cited_chunk_indices,
+                    "decision_type": decision_type.value,
+                    "grounded": groundedness_passed,
+                },
             )
         )
 

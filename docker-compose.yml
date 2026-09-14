@@ -19,6 +19,8 @@ services:
 
   ollama:
     image: ollama/ollama:latest
+    environment:
+      - OLLAMA_NUM_PARALLEL=1
     ports:
       - "11434:11434"
     volumes:

@@ -3,9 +3,7 @@ ADR-0008). Informational only — it does not drive auto-respond/
 draft-for-review/escalate routing, which comes from RAG retrieval
 similarity instead (see app/agent/orchestrator.py).
 """
-import httpx
-
-from app.config import get_settings
+from app.agent.ollama_client import generate
 
 DEFAULT_CATEGORY = "bug"
 
@@ -37,19 +35,7 @@ Category:"""
 
 
 def classify_ticket(text: str) -> str:
-    settings = get_settings()
-    response = httpx.post(
-        f"{settings.ollama_base_url}/api/generate",
-        json={
-            "model": settings.ollama_model_name,
-            "prompt": _PROMPT_TEMPLATE.format(text=text),
-            "stream": False,
-            "options": {"temperature": 0},
-        },
-        timeout=30.0,
-    )
-    response.raise_for_status()
-    raw = response.json()["response"].strip().lower()
+    raw = generate(_PROMPT_TEMPLATE.format(text=text))
     return _match_category(raw)
 
 

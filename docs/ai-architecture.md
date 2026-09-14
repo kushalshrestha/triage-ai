@@ -69,11 +69,17 @@ as placeholder text by the time you're presenting the project.
 - **CI gate:** smoke subset on every PR, full set nightly/pre-release.
 
 ## Guardrails and safety
-- **Input side:** injection detection, PII redaction — current
-  implementation is pattern-based (see `app/guardrails/injection.py`);
-  document if/when this moves to a classifier.
-- **Output side:** schema validation, hallucination check against
-  retrieved context.
+- **Input side:** injection detection (`app/guardrails/injection.py`)
+  and PII redaction (`app/guardrails/pii.py`) — both pattern-based;
+  document if/when either moves to a classifier.
+- **Output side:** schema validation via forced Claude tool-use
+  (`app/agent/drafting.py`'s `submit_draft` tool + Pydantic
+  `DraftOutput`) — a malformed draft escalates the ticket outright
+  rather than surfacing a broken reply. Groundedness is a second,
+  independent Ollama call (`app/agent/judge.py::assess_groundedness`,
+  deterministic temperature) comparing the draft against the retrieved
+  context; a failed verdict downgrades `auto_respond` to
+  `draft_for_review` rather than just logging the score. See ADR-0009.
 - **Red-team set:** how adversarial examples are sourced and grown
   over time (`tests/evals/test_safety_eval.py`), and results of the
   latest run.
@@ -87,6 +93,9 @@ move the resolution into an ADR.
   scheme (even a simple constant per prompt) before the eval-gate story
   in `testing-strategy.md` can actually catch a prompt-change
   regression.
-- **Output-side guardrails** (schema validation, LLM-judge groundedness
-  score against retrieved context) are phase 6 scope — not built yet,
-  see ADR-0008.
+- **Judge reliability:** `tests/evals/test_groundedness_eval.py` checks
+  the groundedness judge on two hand-crafted examples (one clearly
+  grounded, one clearly hallucinated) — not the full "run the judge
+  twice on ~10 examples, confirm stable scores" study
+  `project-brief.md`'s review notes call for before trusting a judge
+  for regression gating. Still open.
