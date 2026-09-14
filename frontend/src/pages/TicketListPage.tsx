@@ -47,6 +47,7 @@ export function TicketListPage() {
       <header className="page-header">
         <h1>{isStaff ? "All tickets" : "Your tickets"}</h1>
         <div>
+          {isStaff && <Link to="/knowledge">Knowledge base</Link>}
           <span className="muted">{user?.email}</span>
           <button onClick={logout}>Log out</button>
         </div>
