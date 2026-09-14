@@ -59,3 +59,6 @@ For anything touching more than one file or the schema, use plan mode
   prompt. Implement, verify with real command output pasted into the
   response (test runs, migration output — not just a claim that it
   worked), and stop there. Kushal reviews the diff and commits himself.
+- Before implementing anything, run `git branch --show-current`. If it
+  returns `main`, stop and ask Kushal to create a feature branch first —
+  don't create one unprompted, and don't implement directly on main.
