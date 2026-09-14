@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     jwt_secret_key: str = "change-me-in-real-deployments"
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
+    cors_allowed_origins: list[str] = ["http://localhost:5173"]
 
 
 @lru_cache
