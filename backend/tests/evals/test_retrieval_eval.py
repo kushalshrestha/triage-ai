@@ -52,7 +52,10 @@ def _load_golden_set() -> list[dict]:
         return [json.loads(line) for line in f if line.strip()]
 
 
-def test_retrieval_recall_at_k_meets_threshold(db_session: Session):
+def test_retrieval_recall_at_k_meets_threshold(db_session: Session, record_eval_run):
+    from app.config import get_settings
+    from app.models import EvalRunType
+
     for title, content in SEED_KNOWLEDGE_BASE.items():
         ingest_document(db_session, title=title, source="eval-seed", content=content)
 
@@ -65,4 +68,15 @@ def test_retrieval_recall_at_k_meets_threshold(db_session: Session):
             hits += 1
 
     recall = hits / len(golden_set)
-    assert recall >= RECALL_THRESHOLD, f"recall@{K} was {recall:.2f}, expected >= {RECALL_THRESHOLD}"
+    passed = recall >= RECALL_THRESHOLD
+
+    record_eval_run(
+        run_type=EvalRunType.RETRIEVAL,
+        model_used=f"local/{get_settings().embedding_model_name}",
+        score=recall,
+        threshold=RECALL_THRESHOLD,
+        passed=passed,
+        details={"k": K, "golden_set_size": len(golden_set), "hits": hits},
+    )
+
+    assert passed, f"recall@{K} was {recall:.2f}, expected >= {RECALL_THRESHOLD}"
