@@ -150,3 +150,22 @@ def test_comment_visible_to_owner_and_agent_not_other_customers(client: TestClie
         f"/tickets/{created['id']}/events", json={"body": "nosy"}, headers=_auth_header(other_token)
     )
     assert forbidden.status_code == 403
+
+
+def test_owner_can_list_ticket_events_but_other_customers_cannot(client: TestClient):
+    owner_token = _register_and_login(client, "events-owner@example.com")
+    other_token = _register_and_login(client, "events-other@example.com")
+    created = client.post(
+        "/tickets", json={"subject": "Has events", "body": "..."}, headers=_auth_header(owner_token)
+    ).json()
+    client.post(
+        f"/tickets/{created['id']}/events", json={"body": "first comment"}, headers=_auth_header(owner_token)
+    )
+
+    owner_response = client.get(f"/tickets/{created['id']}/events", headers=_auth_header(owner_token))
+    assert owner_response.status_code == 200
+    event_types = [e["event_type"] for e in owner_response.json()]
+    assert event_types == ["created", "comment_added"]
+
+    other_response = client.get(f"/tickets/{created['id']}/events", headers=_auth_header(other_token))
+    assert other_response.status_code == 403
