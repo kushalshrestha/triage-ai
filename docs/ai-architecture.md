@@ -24,22 +24,41 @@ as placeholder text by the time you're presenting the project.
   grounded in what was retrieved, vs. hallucinated.
 
 ## Agent design
-- **Decision space:** auto-respond / draft-for-review / escalate.
-- **Tool calls:** what the agent can invoke beyond retrieval (e.g.
-  account/SLA lookup) and how those results factor into the decision.
-- **Confidence threshold:** the number that triggers escalation, and
-  how it was chosen (start with a guess, then justify it with eval
-  data once the golden set has run against it).
+- **Decision space:** auto-respond / draft-for-review / escalate,
+  implemented in `app/agent/orchestrator.py::run_triage`, triggered
+  manually via `POST /tickets/{id}/triage` (not automatic on ticket
+  creation — see ADR-0008 for the cost/latency reasoning).
+- **Tool calls:** `app/agent/tools.py::get_account_context` — requester
+  account age and prior ticket count, both already in the schema. Folds
+  into the Claude drafting prompt and into `agent_decisions.reasoning`;
+  does not change the routing decision itself.
+- **Confidence threshold:** routing comes from the top RAG retrieval's
+  cosine similarity (not a separate model call — see ADR-0008 for why).
+  Starting guesses: `< 0.5` → escalate, `0.5–0.8` → draft-for-review,
+  `≥ 0.8` → auto-respond. `tests/evals/test_triage_eval.py` is the
+  mechanism for revisiting these with real accuracy data.
 
 ## Model routing (LLMOps)
-- **Ollama (local):** which model, why this size, what it's used for
-  (routine classification).
-- **Claude (hosted):** what it's used for (complex draft generation),
-  and why that split rather than one model for everything.
-- **Routing decision data:** link to the cost/latency/accuracy
-  comparison once it exists (see project-brief.md open items).
-- **Prompt versioning:** how prompt changes are tracked and tied to
-  eval runs, so a regression can be traced to a specific version.
+- **Ollama (local):** `llama3.2:1b`, used for routine ticket
+  classification (`app/agent/classify.py`) — a category label
+  (billing/bug/account/feature_request) that's informational (tracked
+  via `tests/evals/test_classification_eval.py`) and doesn't drive
+  routing.
+- **Claude (hosted):** `claude-haiku-4-5-20251001` (configurable via
+  `Settings.claude_model_name`), used for grounded draft generation
+  (`app/agent/drafting.py`) once retrieval similarity clears the
+  draft-for-review/auto-respond threshold. Split rationale: classifying
+  a ticket into one of four labels is exactly the "routine, cheap,
+  local" work Ollama is for; drafting a coherent, grounded reply from
+  retrieved context is the "complex generation" work worth paying for.
+- **Routing decision data:** not yet collected — `agent_decisions` rows
+  now exist with real `model_used` values (ADR-0008 closes
+  `docs/threat-model.md` threat #7), so the cost/latency/accuracy
+  comparison from `project-brief.md`'s open items can be computed from
+  real data going forward, just hasn't been analyzed yet.
+- **Prompt versioning:** not yet implemented — `app/agent/classify.py`
+  and `app/agent/drafting.py`'s prompts are inline string templates with
+  no version tag. Open question, tracked below.
 
 ## Evaluation framework
 - **Golden set:** size, how examples were sourced (synthetic vs. real,
@@ -62,3 +81,12 @@ as placeholder text by the time you're presenting the project.
 ## Open questions
 Track unresolved design decisions here until they're settled, then
 move the resolution into an ADR.
+- **Prompt versioning:** `app/agent/classify.py` and
+  `app/agent/drafting.py` have no version tag on their prompts yet, so
+  a regression can't be traced to a specific prompt version. Needs a
+  scheme (even a simple constant per prompt) before the eval-gate story
+  in `testing-strategy.md` can actually catch a prompt-change
+  regression.
+- **Output-side guardrails** (schema validation, LLM-judge groundedness
+  score against retrieved context) are phase 6 scope — not built yet,
+  see ADR-0008.

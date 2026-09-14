@@ -10,8 +10,6 @@ once the classifier call exists.
 import json
 from pathlib import Path
 
-import pytest
-
 GOLDEN_SET_PATH = Path(__file__).parent / "golden_set.jsonl"
 ACCURACY_THRESHOLD = 0.90
 
@@ -21,9 +19,8 @@ def load_golden_set():
         return [json.loads(line) for line in f]
 
 
-@pytest.mark.skip(reason="Wire up once the classifier (Ollama routing) exists")
 def test_classification_accuracy_meets_threshold():
-    from app.agent.classify import classify_ticket  # implement in phase 2/4
+    from app.agent.classify import classify_ticket
 
     golden_set = load_golden_set()
     correct = 0
