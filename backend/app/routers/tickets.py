@@ -1,7 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app.dependencies import STAFF_ROLES, get_current_user, require_role
@@ -48,7 +48,7 @@ def create_ticket(
 def list_tickets(
     db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ) -> list[Ticket]:
-    query = db.query(Ticket)
+    query = db.query(Ticket).options(joinedload(Ticket.requester))
     if current_user.role.value not in STAFF_ROLES:
         query = query.filter(Ticket.requester_id == current_user.id)
     return query.order_by(Ticket.created_at.desc()).all()
