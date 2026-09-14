@@ -55,3 +55,7 @@ For anything touching more than one file or the schema, use plan mode
   handled elsewhere.
 - Any new external call (a new API, a new ingestion source) gets a row
   added to `docs/threat-model.md`, not just implemented silently.
+- Never run `git commit` or `git push` unless explicitly asked to in the
+  prompt. Implement, verify with real command output pasted into the
+  response (test runs, migration output — not just a claim that it
+  worked), and stop there. Kushal reviews the diff and commits himself.
