@@ -26,6 +26,7 @@ from app.models import (
     User,
     UserRole,
 )
+from app.models.knowledge import EMBEDDING_DIM
 
 
 def make_user(db_session, email="user@example.com", role=UserRole.CUSTOMER) -> User:
@@ -170,7 +171,7 @@ class TestKnowledgeAndChunks:
         doc = KnowledgeDoc(title="Refunds FAQ", content="...")
         db_session.add(doc)
         db_session.flush()
-        vector = [0.1] * 768
+        vector = [0.1] * EMBEDDING_DIM
         chunk = DocChunk(
             knowledge_doc_id=doc.id, chunk_index=0, content="refund policy", embedding=vector
         )
