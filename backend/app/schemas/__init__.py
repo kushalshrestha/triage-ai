@@ -1,3 +1,4 @@
+from app.schemas.agent import AgentDecisionRead
 from app.schemas.knowledge import ChunkSearchResult, KnowledgeDocCreate, KnowledgeDocRead
 from app.schemas.ticket import TicketCreate, TicketEventCreate, TicketEventRead, TicketRead, TicketStatusUpdate
 from app.schemas.user import Token, UserCreate, UserRead
@@ -14,4 +15,5 @@ __all__ = [
     "KnowledgeDocCreate",
     "KnowledgeDocRead",
     "ChunkSearchResult",
+    "AgentDecisionRead",
 ]

@@ -5,8 +5,10 @@ from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import User
+from app.models import User, UserRole
 from app.security import decode_access_token, oauth2_scheme
+
+STAFF_ROLES = (UserRole.AGENT.value, UserRole.ADMIN.value)
 
 CREDENTIALS_EXCEPTION = HTTPException(
     status_code=status.HTTP_401_UNAUTHORIZED,
