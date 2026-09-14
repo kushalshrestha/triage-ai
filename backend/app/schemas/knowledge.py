@@ -14,6 +14,7 @@ class KnowledgeDocRead(BaseModel):
     id: uuid.UUID
     title: str
     source: str | None
+    content: str
     created_at: datetime
 
     model_config = {"from_attributes": True}

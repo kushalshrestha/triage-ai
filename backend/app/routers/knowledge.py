@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, Query, status
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -45,3 +47,16 @@ def search_knowledge(
         )
         for chunk, score in results
     ]
+
+
+@router.delete("/{knowledge_doc_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_knowledge_doc(
+    knowledge_doc_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(require_role(*STAFF_ROLES)),
+) -> None:
+    doc = db.get(KnowledgeDoc, knowledge_doc_id)
+    if doc is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge doc not found")
+    db.delete(doc)
+    db.commit()

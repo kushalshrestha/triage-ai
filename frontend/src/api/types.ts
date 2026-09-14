@@ -57,3 +57,19 @@ export interface AgentDecisionRead {
   reasoning: string | null;
   created_at: string;
 }
+
+export interface KnowledgeDocRead {
+  id: string;
+  title: string;
+  source: string | null;
+  content: string;
+  created_at: string;
+}
+
+export interface ChunkSearchResult {
+  chunk_id: string;
+  knowledge_doc_id: string;
+  knowledge_doc_title: string;
+  content: string;
+  similarity_score: number;
+}
