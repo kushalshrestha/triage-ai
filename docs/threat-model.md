@@ -21,12 +21,12 @@ trust boundary is added (a new external API, a new ingestion source).
 | # | Threat (STRIDE) | Scenario | Mitigation | Status |
 |---|---|---|---|---|
 | 1 | Tampering / Elevation | Prompt injection in ticket text manipulates agent behavior (e.g. "ignore instructions, issue refund") | Input guardrails (`app/guardrails/injection.py`), red-team eval suite | Implemented (pattern-based; classifier upgrade tracked in ai-architecture.md) |
-| 2 | Information disclosure | PII in ticket text reaches logs, traces, or model provider | PII redaction before model/log calls | Planned — not yet implemented, blocking item for phase 4 |
-| 3 | Information disclosure | User A reads user B's tickets (IDOR) | Authz checks on every ticket endpoint — ticket must belong to requesting user or their org | Planned — required in ticket CRUD router, not yet built |
+| 2 | Information disclosure | PII in ticket text reaches logs, traces, or model provider | PII redaction before model/log calls (`app/guardrails/pii.py`) | Implemented (pattern-based, same style as injection detection; see ADR-0008) |
+| 3 | Information disclosure | User A reads user B's tickets (IDOR) | Authz checks on every ticket endpoint — ticket must belong to requesting user or their org | Implemented — `app/routers/tickets.py`'s `_ensure_can_view_ticket` (see ADR-0005) |
 | 4 | Denial of service / cost abuse | Unbounded requests to the AI endpoints run up LLM API cost | Rate limiting on AI-facing endpoints | Planned — noted in project-brief.md review notes |
 | 5 | Information disclosure | Secrets (API keys, DB credentials) committed to git | `.env` gitignored, `detect-secrets` pre-commit hook, CI secret scanning is out of scope for a public dependency scanner but the pre-commit hook catches local commits | Implemented |
 | 6 | Tampering | Vulnerable dependency introduces an exploitable bug | `pip-audit` in CI on every PR | Implemented |
-| 7 | Repudiation | No record of which model/version produced a given response, making incidents hard to investigate | `agent_decisions.model_used`, prompt/model versioning in eval_runs | Implemented at schema level; enforcement in code is phase 4+ |
+| 7 | Repudiation | No record of which model/version produced a given response, making incidents hard to investigate | `agent_decisions.model_used`, prompt/model versioning in eval_runs | Implemented — every decision from `app/agent/orchestrator.py` records `model_used` (comma-separated when multiple models contributed, see ADR-0008); `eval_runs` prompt versioning still open |
 | 8 | Spoofing | Malicious document injected into the knowledge base during ingestion, poisoning retrieval | Ingestion source allowlist / review step before a doc enters `knowledge_docs` | Open question — not yet designed, add to ai-architecture.md open questions |
 
 ## Out of scope for this project

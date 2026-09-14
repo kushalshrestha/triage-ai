@@ -2,15 +2,13 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_current_user, require_role
-from app.models import KnowledgeDoc, User, UserRole
+from app.dependencies import STAFF_ROLES, get_current_user, require_role
+from app.models import KnowledgeDoc, User
 from app.rag.ingestion import ingest_document
 from app.rag.retrieval import retrieve_relevant_chunks
 from app.schemas import ChunkSearchResult, KnowledgeDocCreate, KnowledgeDocRead
 
 router = APIRouter(prefix="/knowledge", tags=["knowledge"])
-
-STAFF_ROLES = (UserRole.AGENT.value, UserRole.ADMIN.value)
 
 
 @router.post("", response_model=KnowledgeDocRead, status_code=status.HTTP_201_CREATED)
