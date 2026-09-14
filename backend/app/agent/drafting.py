@@ -1,4 +1,5 @@
 from anthropic import Anthropic
+from pydantic import BaseModel, ValidationError
 
 from app.config import get_settings
 from app.models import Ticket
@@ -10,27 +11,85 @@ _SYSTEM_PROMPT = (
     "say so honestly rather than guessing. Be concise and professional."
 )
 
+_DRAFT_TOOL = {
+    "name": "submit_draft",
+    "description": "Submit the drafted customer support reply.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "reply_text": {
+                "type": "string",
+                "description": "The drafted reply to send to the customer.",
+            },
+            "cited_chunk_indices": {
+                "type": "array",
+                "items": {"type": "integer"},
+                "description": (
+                    "0-based indices into the provided context chunks that this "
+                    "reply is grounded in."
+                ),
+            },
+        },
+        "required": ["reply_text", "cited_chunk_indices"],
+    },
+}
 
-def generate_draft(ticket: Ticket, context_chunks: list[str], account_context: dict) -> str:
+
+class DraftOutput(BaseModel):
+    reply_text: str
+    cited_chunk_indices: list[int]
+
+
+class DraftSchemaError(Exception):
+    """Claude's tool call was missing, malformed, or cited an
+    out-of-range chunk index. Caught by the orchestrator to force an
+    escalation instead of surfacing a broken draft — see ADR-0009.
+    """
+
+
+def generate_draft(
+    ticket: Ticket, context_chunks: list[str], account_context: dict
+) -> DraftOutput:
     settings = get_settings()
     client = Anthropic(api_key=settings.anthropic_api_key)
 
     context_block = (
-        "\n\n---\n\n".join(context_chunks) if context_chunks else "(no relevant context found)"
+        "\n\n---\n\n".join(f"[{i}] {chunk}" for i, chunk in enumerate(context_chunks))
+        if context_chunks
+        else "(no relevant context found)"
     )
     user_message = (
         f"Customer account: {account_context['prior_ticket_count']} prior ticket(s), "
         f"account age {account_context['account_age_days']} day(s).\n\n"
-        f"Context:\n{context_block}\n\n"
+        f"Context (indexed):\n{context_block}\n\n"
         f"Ticket subject: {ticket.subject}\n"
         f"Ticket body: {ticket.body}\n\n"
-        f"Draft a reply."
+        f"Call submit_draft with your reply."
     )
 
     message = client.messages.create(
         model=settings.claude_model_name,
         max_tokens=500,
         system=_SYSTEM_PROMPT,
+        tools=[_DRAFT_TOOL],
+        tool_choice={"type": "tool", "name": "submit_draft"},
         messages=[{"role": "user", "content": user_message}],
     )
-    return message.content[0].text
+
+    tool_use_block = next((b for b in message.content if b.type == "tool_use"), None)
+    if tool_use_block is None:
+        raise DraftSchemaError("Claude did not call the submit_draft tool")
+
+    try:
+        draft = DraftOutput.model_validate(tool_use_block.input)
+    except ValidationError as e:
+        raise DraftSchemaError(f"submit_draft input failed validation: {e}") from e
+
+    if context_chunks and any(
+        i < 0 or i >= len(context_chunks) for i in draft.cited_chunk_indices
+    ):
+        raise DraftSchemaError(
+            "cited_chunk_indices referenced a chunk outside the provided context"
+        )
+
+    return draft
