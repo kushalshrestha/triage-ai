@@ -42,3 +42,16 @@ AI-native support ticketing platform. Full design context:
 ## Workflow
 For anything touching more than one file or the schema, use plan mode
 (Shift+Tab) first and confirm the approach before implementation starts.
+
+## Secure SDLC (see ADR-0003, SECURITY.md, docs/threat-model.md)
+- Work on a feature branch, never commit directly to `main`. Open a PR
+  even for solo review — the CI run and PR description are the point.
+- Before proposing a commit, run: `ruff check .`, `bandit -c pyproject.toml
+  -r app/`, and the relevant test layer. Don't rely on CI to catch what a
+  local check would have caught first.
+- Any endpoint touching ticket data must include an authz check (ticket
+  belongs to the requesting user) — see threat-model.md item #3. Flag it
+  explicitly if a new endpoint is missing one rather than assuming it's
+  handled elsewhere.
+- Any new external call (a new API, a new ingestion source) gets a row
+  added to `docs/threat-model.md`, not just implemented silently.
