@@ -17,6 +17,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      # torch is a transitive dep of sentence-transformers (see ADR-0007 /
+      # backend/Dockerfile); the default PyPI Linux wheel pulls in several
+      # GB of NVIDIA CUDA packages that fill the runner's disk, so install
+      # the CPU build first from PyTorch's own index, same as the Dockerfile.
+      - run: pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
       - run: pip install -r requirements.txt -r requirements-dev.txt
       - name: Lint (ruff)
         run: ruff check .
@@ -52,6 +57,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - run: pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
       - run: pip install -r requirements.txt -r requirements-dev.txt
       - name: Unit tests
         run: pytest tests/unit -v
@@ -87,6 +93,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - run: pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
       - run: pip install -r requirements.txt -r requirements-dev.txt
       - name: Wait for Ollama
         run: |
