@@ -64,6 +64,8 @@ jobs:
           python-version: "3.12"
       - run: pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
       - run: pip install -r requirements.txt -r requirements-dev.txt
+      - name: Apply migrations
+        run: alembic upgrade head
       - name: Unit tests
         run: pytest tests/unit -v
       - name: Safety / red-team eval (deterministic pass-fail, no model call)
