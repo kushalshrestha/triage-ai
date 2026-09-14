@@ -31,6 +31,8 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    env:
+      DATABASE_URL: postgresql://platform:platform@localhost:5432/support_platform
     services:
       db:
         image: pgvector/pgvector:pg16
@@ -56,8 +58,6 @@ jobs:
       - name: Safety / red-team eval (deterministic pass-fail)
         run: pytest tests/evals/test_safety_eval.py -v
       - name: Integration tests
-        env:
-          DATABASE_URL: postgresql://platform:platform@localhost:5432/support_platform
         run: pytest tests/integration -v
 
   # Eval smoke gate: runs the small golden-set subset against real models on
