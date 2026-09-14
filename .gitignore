@@ -4,6 +4,7 @@ __pycache__/
 node_modules/
 dist/
 *.tsbuildinfo
+.vite/
 .pytest_cache/
 .DS_Store
 CLAUDE.local.md
