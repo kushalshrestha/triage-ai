@@ -95,6 +95,22 @@ def update_ticket(
     return ticket
 
 
+@router.get("/{ticket_id}/events", response_model=list[TicketEventRead])
+def list_ticket_events(
+    ticket_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[TicketEvent]:
+    ticket = _get_ticket_or_404(ticket_id, db)
+    _ensure_can_view_ticket(ticket, current_user)
+    return (
+        db.query(TicketEvent)
+        .filter(TicketEvent.ticket_id == ticket.id)
+        .order_by(TicketEvent.created_at.asc())
+        .all()
+    )
+
+
 @router.post(
     "/{ticket_id}/events", response_model=TicketEventRead, status_code=status.HTTP_201_CREATED
 )
