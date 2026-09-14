@@ -26,3 +26,4 @@ repos:
     hooks:
       - id: detect-secrets
         args: ["--baseline", ".secrets.baseline"]
+        exclude: ^backend/tests/

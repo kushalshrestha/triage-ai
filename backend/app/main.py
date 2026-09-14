@@ -1,6 +1,11 @@
 from fastapi import FastAPI
 
+from app.routers import auth, tickets
+
 app = FastAPI(title="TriageAI", version="0.1.0")
+
+app.include_router(auth.router)
+app.include_router(tickets.router)
 
 
 @app.get("/health")
@@ -9,7 +14,6 @@ def health():
     return {"status": "ok"}
 
 
-# Routers get wired up as each phase lands:
-# from app.routers import tickets, agent
-# app.include_router(tickets.router)
+# The agent router gets wired up once phase 5 (agent orchestration) lands:
+# from app.routers import agent
 # app.include_router(agent.router)
