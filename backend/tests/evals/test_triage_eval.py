@@ -4,8 +4,11 @@ models — hence tests/evals, not tests/integration (which mocks
 classify_ticket/generate_draft). Requires the `ollama` service running
 with `llama3.2:1b` pulled, and a real ANTHROPIC_API_KEY in backend/.env.
 """
+import pytest
+
 from app.agent.orchestrator import run_triage
-from app.models import DecisionType, Ticket, User, UserRole
+from app.config import get_settings
+from app.models import DecisionType, EvalRunType, Ticket, User, UserRole
 from app.rag.ingestion import ingest_document
 from app.security import hash_password
 
@@ -43,7 +46,8 @@ def _make_customer(db_session, email: str) -> User:
     return user
 
 
-def test_triage_routing_accuracy_meets_threshold(db_session):
+@pytest.mark.costly
+def test_triage_routing_accuracy_meets_threshold(db_session, record_eval_run):
     ingest_document(
         db_session, title="Password Reset FAQ", source="eval", content=PASSWORD_RESET_DOC
     )
@@ -63,7 +67,19 @@ def test_triage_routing_accuracy_meets_threshold(db_session):
             correct += 1
 
     accuracy = correct / len(EXAMPLES)
-    assert accuracy >= ACCURACY_THRESHOLD, (
+    passed = accuracy >= ACCURACY_THRESHOLD
+
+    settings = get_settings()
+    record_eval_run(
+        run_type=EvalRunType.ROUTING,
+        model_used=f"ollama/{settings.ollama_model_name},{settings.claude_model_name}",
+        score=accuracy,
+        threshold=ACCURACY_THRESHOLD,
+        passed=passed,
+        details={"examples": len(EXAMPLES), "correct": correct},
+    )
+
+    assert passed, (
         f"Triage routing accuracy {accuracy:.2f} fell below threshold "
         f"{ACCURACY_THRESHOLD} — check for regressions before merging."
     )

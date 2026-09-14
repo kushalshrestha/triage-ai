@@ -38,6 +38,9 @@ class AgentDecision(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     model_used: Mapped[str] = mapped_column(String, nullable=False)
     confidence_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     reasoning: Mapped[str | None] = mapped_column(Text, nullable=True)
+    total_latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    claude_input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    claude_output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     ticket: Mapped["Ticket"] = relationship(back_populates="agent_decisions")
     retrievals: Mapped[list["Retrieval"]] = relationship(

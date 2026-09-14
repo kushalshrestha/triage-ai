@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.agent import orchestrator
-from app.agent.drafting import DraftOutput, DraftSchemaError
+from app.agent.drafting import ClaudeUsage, DraftOutput, DraftSchemaError
 from app.models import AgentDecision, GuardrailCheck, Retrieval, Ticket, TicketStatus, User, UserRole
 from app.rag.ingestion import ingest_document
 from app.security import create_access_token, hash_password
@@ -58,7 +58,10 @@ def test_customer_cannot_trigger_triage(client: TestClient, db_session: Session)
 def test_good_kb_match_drafts_a_reply(client: TestClient, db_session: Session, monkeypatch):
     monkeypatch.setattr(orchestrator, "classify_ticket", MagicMock(return_value="account"))
     mock_draft = MagicMock(
-        return_value=DraftOutput(reply_text="Here's how to reset your password: ...", cited_chunk_indices=[0])
+        return_value=(
+            DraftOutput(reply_text="Here's how to reset your password: ...", cited_chunk_indices=[0]),
+            ClaudeUsage(input_tokens=120, output_tokens=40),
+        )
     )
     monkeypatch.setattr(orchestrator, "generate_draft", mock_draft)
     mock_groundedness = MagicMock(return_value=(True, "verdict: grounded"))
@@ -89,6 +92,10 @@ def test_good_kb_match_drafts_a_reply(client: TestClient, db_session: Session, m
     check_types = {c.check_type.value: c.passed for c in checks}
     assert check_types["schema_validation"] is True
     assert check_types["groundedness"] is True
+
+    assert decision.total_latency_ms is not None and decision.total_latency_ms >= 0
+    assert decision.claude_input_tokens == 120
+    assert decision.claude_output_tokens == 40
 
     ticket_row = db_session.get(Ticket, ticket["id"])
     assert ticket_row.status in (TicketStatus.PENDING, TicketStatus.RESOLVED)
@@ -134,7 +141,12 @@ def test_ungrounded_draft_downgrades_auto_respond_to_draft_for_review(
     monkeypatch.setattr(
         orchestrator,
         "generate_draft",
-        MagicMock(return_value=DraftOutput(reply_text="A confidently wrong answer.", cited_chunk_indices=[0])),
+        MagicMock(
+            return_value=(
+                DraftOutput(reply_text="A confidently wrong answer.", cited_chunk_indices=[0]),
+                ClaudeUsage(input_tokens=100, output_tokens=30),
+            )
+        ),
     )
     monkeypatch.setattr(
         orchestrator, "assess_groundedness", MagicMock(return_value=(False, "verdict: ungrounded"))

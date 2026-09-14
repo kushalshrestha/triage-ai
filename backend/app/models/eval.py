@@ -18,6 +18,8 @@ class EvalRunType(str, enum.Enum):
     FAITHFULNESS = "faithfulness"
     JUDGE = "judge"
     SAFETY = "safety"
+    RETRIEVAL = "retrieval"  # added ADR-0010: recall@k has no home in the original 4
+    ROUTING = "routing"  # added ADR-0010: auto_respond/draft/escalate accuracy
 
 
 class GoldenSetEntry(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):

@@ -4,6 +4,8 @@ supported by the retrieved context, or makes unsupported claims.
 """
 from app.agent.ollama_client import generate
 
+PROMPT_VERSION = "v1"
+
 _PROMPT_TEMPLATE = """Context: {context}
 
 Reply: {reply}
