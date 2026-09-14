@@ -50,6 +50,16 @@ def test_decode_rejects_expired_token():
 
 def test_decode_rejects_tampered_token():
     token = create_access_token(user_id=uuid.uuid4(), role="customer")
-    tampered = token[:-1] + ("A" if token[-1] != "A" else "B")
+    # Flip a character in the middle of the signature, not the last one:
+    # the final base64url character of a 32-byte HMAC-SHA256 signature
+    # only carries 4 of its 6 bits meaningfully (2 are padding), so some
+    # last-character swaps decode to identical bytes and don't actually
+    # change the signature — this was genuinely flaky (~1 in 5 runs)
+    # before this fix.
+    header, payload, signature = token.split(".")
+    mid = len(signature) // 2
+    flipped_char = "A" if signature[mid] != "A" else "B"
+    tampered_signature = signature[:mid] + flipped_char + signature[mid + 1 :]
+    tampered = f"{header}.{payload}.{tampered_signature}"
     with pytest.raises(jwt.InvalidTokenError):
         decode_access_token(tampered)

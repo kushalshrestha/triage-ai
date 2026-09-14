@@ -5,6 +5,7 @@ similarity instead (see app/agent/orchestrator.py).
 """
 from app.agent.ollama_client import generate
 
+PROMPT_VERSION = "v1"
 DEFAULT_CATEGORY = "bug"
 
 _PROMPT_TEMPLATE = """Classify the support ticket below into exactly one category. \

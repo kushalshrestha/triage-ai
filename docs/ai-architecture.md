@@ -51,22 +51,35 @@ as placeholder text by the time you're presenting the project.
   a ticket into one of four labels is exactly the "routine, cheap,
   local" work Ollama is for; drafting a coherent, grounded reply from
   retrieved context is the "complex generation" work worth paying for.
-- **Routing decision data:** not yet collected — `agent_decisions` rows
-  now exist with real `model_used` values (ADR-0008 closes
-  `docs/threat-model.md` threat #7), so the cost/latency/accuracy
-  comparison from `project-brief.md`'s open items can be computed from
-  real data going forward, just hasn't been analyzed yet.
-- **Prompt versioning:** not yet implemented — `app/agent/classify.py`
-  and `app/agent/drafting.py`'s prompts are inline string templates with
-  no version tag. Open question, tracked below.
+- **Routing decision data:** `agent_decisions` now carries
+  `total_latency_ms`, `claude_input_tokens`, and `claude_output_tokens`
+  per decision (ADR-0010), alongside `model_used`.
+  `scripts/cost_report.py` (`docker compose exec api python
+  scripts/cost_report.py`) prints the Ollama-vs-Claude comparison
+  `project-brief.md` asks for — a report generator, not a live
+  dashboard (see Open questions: tracing).
+- **Prompt versioning:** each prompt (`app/agent/classify.py`,
+  `drafting.py`, `judge.py`) has a `PROMPT_VERSION` constant, recorded
+  on `eval_runs.prompt_version` every time the corresponding eval test
+  runs (ADR-0010). Not yet recorded on `agent_decisions` itself — no
+  column for it there, and not needed yet with one version per prompt.
 
 ## Evaluation framework
 - **Golden set:** size, how examples were sourced (synthetic vs. real,
   see project-brief.md), how it's kept representative over time.
-- **Metrics:** classification accuracy, RAG faithfulness, LLM-as-judge
-  quality score — thresholds for each, and what happens when a run
-  falls below threshold.
-- **CI gate:** smoke subset on every PR, full set nightly/pre-release.
+- **Metrics:** classification accuracy (`test_classification_eval.py`),
+  retrieval recall@k (`test_retrieval_eval.py`), RAG faithfulness/
+  groundedness (`test_groundedness_eval.py`), triage routing accuracy
+  (`test_triage_eval.py`) — each asserts against a hardcoded threshold
+  in its own test file, which *is* the regression baseline for now
+  (see ADR-0010 for why a separate snapshot-file system would be
+  premature at one prompt version each). A run below threshold fails
+  its test and blocks CI.
+- **CI gate:** `.github/workflows/ci.yml`'s `eval-smoke` job runs every
+  free eval (no Claude call — `@pytest.mark.costly` marks the one that
+  isn't) blocking on every PR; `eval-full` runs everything, including
+  the real Claude-calling triage eval, nightly + on manual dispatch
+  only, to keep CI's Claude spend bounded.
 
 ## Guardrails and safety
 - **Input side:** injection detection (`app/guardrails/injection.py`)
@@ -87,15 +100,21 @@ as placeholder text by the time you're presenting the project.
 ## Open questions
 Track unresolved design decisions here until they're settled, then
 move the resolution into an ADR.
-- **Prompt versioning:** `app/agent/classify.py` and
-  `app/agent/drafting.py` have no version tag on their prompts yet, so
-  a regression can't be traced to a specific prompt version. Needs a
-  scheme (even a simple constant per prompt) before the eval-gate story
-  in `testing-strategy.md` can actually catch a prompt-change
-  regression.
 - **Judge reliability:** `tests/evals/test_groundedness_eval.py` checks
   the groundedness judge on two hand-crafted examples (one clearly
   grounded, one clearly hallucinated) — not the full "run the judge
   twice on ~10 examples, confirm stable scores" study
   `project-brief.md`'s review notes call for before trusting a judge
   for regression gating. Still open.
+- **Tracing / cost dashboard:** `project-brief.md`'s tech stack names
+  Langfuse (or similar) for per-call tracing; `scripts/cost_report.py`
+  (ADR-0010) is a deliberately minimal stand-in — a report generator
+  run on demand, not a live dashboard with per-call traces. Standing up
+  real tracing is a bigger infra lift (a new service, an integration
+  point in every model call site) than any pass so far has scoped in.
+- **Regression baseline snapshots:** ADR-0010 argues each eval's
+  hardcoded threshold already serves as its baseline while there's only
+  one prompt version each. Revisit — a committed snapshot file per
+  `testing-strategy.md` layer 5 — once prompt iteration actually starts
+  happening and "did this PR regress vs. the last known-good version"
+  becomes a real question, not a hypothetical one.
