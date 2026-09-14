@@ -4,13 +4,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_current_user, require_role
-from app.models import Ticket, TicketEvent, TicketEventType, User, UserRole
+from app.dependencies import STAFF_ROLES, get_current_user, require_role
+from app.models import Ticket, TicketEvent, TicketEventType, User
 from app.schemas import TicketCreate, TicketEventCreate, TicketEventRead, TicketRead, TicketStatusUpdate
 
 router = APIRouter(prefix="/tickets", tags=["tickets"])
-
-STAFF_ROLES = (UserRole.AGENT.value, UserRole.ADMIN.value)
 
 
 def _get_ticket_or_404(ticket_id: uuid.UUID, db: Session) -> Ticket:
