@@ -60,10 +60,14 @@ jobs:
       - name: Integration tests
         run: pytest tests/integration -v
 
-  # Eval smoke gate: runs the small golden-set subset against real models on
-  # every PR once classify_ticket() exists (see tests/evals/test_classification_eval.py).
-  # Kept as a separate, non-blocking job until phase 4 lands so CI doesn't
-  # fail on tests that are intentionally still skipped.
+  # Eval smoke gate: runs the classification + groundedness golden-set
+  # subset against a real local Ollama model on every PR (see
+  # tests/evals/test_classification_eval.py, test_groundedness_eval.py).
+  # Non-blocking (continue-on-error) since these are real model calls and
+  # can be flaky/slow on a shared runner. tests/evals/test_retrieval_eval.py
+  # and test_triage_eval.py are excluded here — they also need a live DB
+  # (and, for the triage eval, a real Claude call), which this job doesn't
+  # provision; run those via `docker compose exec api pytest tests/evals`.
   eval-smoke:
     runs-on: ubuntu-latest
     needs: lint-and-scan
@@ -71,13 +75,27 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    env:
+      OLLAMA_BASE_URL: http://localhost:11434
+    services:
+      ollama:
+        image: ollama/ollama:latest
+        ports:
+          - 11434:11434
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt -r requirements-dev.txt
-      - name: Eval suite (non-blocking until phase 4)
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: pytest tests/evals -v
+      - name: Wait for Ollama
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:11434/api/tags && break
+            sleep 2
+          done
+      - name: Pull eval model
+        run: |
+          curl -s http://localhost:11434/api/pull -d '{"name": "llama3.2:1b"}'
+      - name: Eval smoke subset (real Ollama calls, no DB/Claude required)
+        run: pytest tests/evals/test_classification_eval.py tests/evals/test_groundedness_eval.py -v
