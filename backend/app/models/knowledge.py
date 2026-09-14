@@ -8,7 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 from app.models.mixins import CreatedAtMixin, TimestampMixin, UUIDPrimaryKeyMixin
 
-EMBEDDING_DIM = 768  # provisional, see ADR-0004 — revisit once ai-architecture.md's embedding model is chosen
+EMBEDDING_DIM = 384  # sentence-transformers/all-MiniLM-L6-v2, see ADR-0007
 
 
 class KnowledgeDoc(UUIDPrimaryKeyMixin, TimestampMixin, Base):

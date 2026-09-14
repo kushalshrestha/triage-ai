@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
     cors_allowed_origins: list[str] = ["http://localhost:5173"]
+    embedding_model_name: str = "all-MiniLM-L6-v2"
 
 
 @lru_cache
