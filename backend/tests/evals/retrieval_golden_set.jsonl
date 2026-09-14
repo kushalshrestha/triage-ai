@@ -1,0 +1,5 @@
+{"query": "I can't log in and need to reset my password", "expected_doc_title": "Password Reset"}
+{"query": "when will my refund show up on my card", "expected_doc_title": "Billing Refunds"}
+{"query": "how do I change the email address on my account", "expected_doc_title": "Change Account Email"}
+{"query": "is there a dark mode option in the dashboard", "expected_doc_title": "Dark Mode Availability"}
+{"query": "my data export has been stuck at zero percent for two days", "expected_doc_title": "Data Export Status"}
