@@ -3,6 +3,8 @@ __pycache__/
 .env
 node_modules/
 dist/
+*.tsbuildinfo
+.vite/
 .pytest_cache/
 .DS_Store
 CLAUDE.local.md
