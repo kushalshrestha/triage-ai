@@ -1,7 +1,9 @@
+import time
+
 from sqlalchemy.orm import Session
 
 from app.agent.classify import classify_ticket
-from app.agent.drafting import DraftOutput, DraftSchemaError, generate_draft
+from app.agent.drafting import ClaudeUsage, DraftOutput, DraftSchemaError, generate_draft
 from app.agent.judge import assess_groundedness
 from app.agent.tools import get_account_context
 from app.config import get_settings
@@ -44,6 +46,7 @@ def _clamp_similarity(value: float) -> float:
 
 
 def run_triage(db: Session, ticket: Ticket) -> AgentDecision:
+    start_time = time.monotonic()
     raw_text = f"{ticket.subject}\n{ticket.body}"
 
     injection_detected = is_likely_injection(raw_text)
@@ -63,6 +66,7 @@ def run_triage(db: Session, ticket: Ticket) -> AgentDecision:
             model_used="none",
             confidence_score=0.0,
             reasoning="Input guardrail: prompt injection detected in ticket text.",
+            total_latency_ms=int((time.monotonic() - start_time) * 1000),
         )
         db.add(decision)
         _apply_decision_to_ticket(db, ticket, decision)
@@ -99,6 +103,7 @@ def run_triage(db: Session, ticket: Ticket) -> AgentDecision:
     schema_error: str | None = None
     groundedness_passed: bool | None = None
     groundedness_raw: str | None = None
+    claude_usage: ClaudeUsage | None = None
 
     if decision_type in (DecisionType.DRAFT_FOR_REVIEW, DecisionType.AUTO_RESPOND):
         account_context = get_account_context(db, ticket.requester)
@@ -108,11 +113,12 @@ def run_triage(db: Session, ticket: Ticket) -> AgentDecision:
             models_used.append(settings.claude_model_name)
 
         try:
-            draft = generate_draft(ticket, context_texts, account_context)
+            draft, claude_usage = generate_draft(ticket, context_texts, account_context)
             schema_valid = True
         except DraftSchemaError as exc:
             schema_valid = False
             schema_error = str(exc)
+            claude_usage = exc.usage
             decision_type = DecisionType.ESCALATE
 
         if draft is not None:
@@ -139,6 +145,9 @@ def run_triage(db: Session, ticket: Ticket) -> AgentDecision:
         model_used=",".join(models_used),
         confidence_score=top_similarity,
         reasoning="; ".join(reasoning_parts),
+        total_latency_ms=int((time.monotonic() - start_time) * 1000),
+        claude_input_tokens=claude_usage.input_tokens if claude_usage else None,
+        claude_output_tokens=claude_usage.output_tokens if claude_usage else None,
     )
     db.add(decision)
     db.flush()

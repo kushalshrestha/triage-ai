@@ -99,12 +99,12 @@ don't claim it's done when it isn't.
 - **Rate limiting on AI endpoints:** worth adding once the model router
   exists — both a cost-control story and a legitimate platform-engineering
   concern (an unthrottled endpoint calling Claude is a real production risk).
-- **README:** currently missing from the scaffold — add one that leads with
-  the platform story (architecture diagram, what makes this different from
-  an LLM wrapper), not a generic "clone and run" doc.
-- **CI workflow file:** `docs/testing-strategy.md` describes the eval gate,
-  but no `.github/workflows/` file exists yet — this is real work still to do
-  in phase 7, not just documented.
+- **README:** done — leads with the platform story, not a generic
+  "clone and run" doc.
+- **CI workflow file:** done (phase 7, ADR-0010) — `.github/workflows/
+  ci.yml` now has a real eval gate: `eval-smoke` (free evals, blocking
+  on every PR) and `eval-full` (everything, including the one
+  Claude-calling eval, nightly + manual dispatch).
 
 ## 7. Open decisions (fill in as you go)
 

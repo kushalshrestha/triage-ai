@@ -19,8 +19,10 @@ def load_golden_set():
         return [json.loads(line) for line in f]
 
 
-def test_classification_accuracy_meets_threshold():
-    from app.agent.classify import classify_ticket
+def test_classification_accuracy_meets_threshold(record_eval_run):
+    from app.agent.classify import PROMPT_VERSION, classify_ticket
+    from app.config import get_settings
+    from app.models import EvalRunType
 
     golden_set = load_golden_set()
     correct = 0
@@ -30,7 +32,19 @@ def test_classification_accuracy_meets_threshold():
             correct += 1
 
     accuracy = correct / len(golden_set)
-    assert accuracy >= ACCURACY_THRESHOLD, (
+    passed = accuracy >= ACCURACY_THRESHOLD
+
+    record_eval_run(
+        run_type=EvalRunType.CLASSIFICATION,
+        prompt_version=PROMPT_VERSION,
+        model_used=f"ollama/{get_settings().ollama_model_name}",
+        score=accuracy,
+        threshold=ACCURACY_THRESHOLD,
+        passed=passed,
+        details={"golden_set_size": len(golden_set), "correct": correct},
+    )
+
+    assert passed, (
         f"Classification accuracy {accuracy:.2f} fell below "
         f"threshold {ACCURACY_THRESHOLD} — check for regressions "
         f"before merging."

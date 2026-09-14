@@ -1,8 +1,12 @@
+from dataclasses import dataclass
+
 from anthropic import Anthropic
 from pydantic import BaseModel, ValidationError
 
 from app.config import get_settings
 from app.models import Ticket
+
+PROMPT_VERSION = "v1"
 
 _SYSTEM_PROMPT = (
     "You are a customer support agent drafting a reply to a support ticket. "
@@ -40,16 +44,31 @@ class DraftOutput(BaseModel):
     cited_chunk_indices: list[int]
 
 
+@dataclass
+class ClaudeUsage:
+    input_tokens: int
+    output_tokens: int
+
+
 class DraftSchemaError(Exception):
     """Claude's tool call was missing, malformed, or cited an
     out-of-range chunk index. Caught by the orchestrator to force an
     escalation instead of surfacing a broken draft — see ADR-0009.
+
+    `usage` is attached when available (ADR-0010) — the Claude call
+    still cost money even when its output failed validation, so the
+    orchestrator can still record token counts on the escalated
+    decision.
     """
+
+    def __init__(self, message: str, usage: ClaudeUsage | None = None):
+        super().__init__(message)
+        self.usage = usage
 
 
 def generate_draft(
     ticket: Ticket, context_chunks: list[str], account_context: dict
-) -> DraftOutput:
+) -> tuple[DraftOutput, ClaudeUsage]:
     settings = get_settings()
     client = Anthropic(api_key=settings.anthropic_api_key)
 
@@ -75,21 +94,24 @@ def generate_draft(
         tool_choice={"type": "tool", "name": "submit_draft"},
         messages=[{"role": "user", "content": user_message}],
     )
+    usage = ClaudeUsage(
+        input_tokens=message.usage.input_tokens, output_tokens=message.usage.output_tokens
+    )
 
     tool_use_block = next((b for b in message.content if b.type == "tool_use"), None)
     if tool_use_block is None:
-        raise DraftSchemaError("Claude did not call the submit_draft tool")
+        raise DraftSchemaError("Claude did not call the submit_draft tool", usage=usage)
 
     try:
         draft = DraftOutput.model_validate(tool_use_block.input)
     except ValidationError as e:
-        raise DraftSchemaError(f"submit_draft input failed validation: {e}") from e
+        raise DraftSchemaError(f"submit_draft input failed validation: {e}", usage=usage) from e
 
     if context_chunks and any(
         i < 0 or i >= len(context_chunks) for i in draft.cited_chunk_indices
     ):
         raise DraftSchemaError(
-            "cited_chunk_indices referenced a chunk outside the provided context"
+            "cited_chunk_indices referenced a chunk outside the provided context", usage=usage
         )
 
-    return draft
+    return draft, usage
