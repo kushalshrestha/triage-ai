@@ -77,12 +77,12 @@ don't claim it's done when it isn't.
 
 ## 5. Interview-ready artifacts (the actual deliverables)
 
-- [ ] Architecture diagram (system + data flow)
-- [ ] Eval results table (accuracy, faithfulness, judge scores, before/after prompt changes)
-- [ ] Safety/red-team results (injection attempts caught vs. missed, PII redaction coverage)
-- [ ] Cost/latency comparison: Ollama-local vs. Claude-API per task type
-- [ ] Short recorded demo (triage → retrieval → draft → guardrail check → escalation)
-- [ ] README that leads with the platform story, not the CRUD app
+- [x] Architecture diagram (system + data flow) — `docs/system-architecture.md`
+- [x] Eval results table (accuracy, faithfulness, judge scores, before/after prompt changes) — `docs/results.md` (before/after: not yet meaningful, only one prompt version per prompt so far — see ADR-0010)
+- [x] Safety/red-team results (injection attempts caught vs. missed, PII redaction coverage) — `docs/results.md`
+- [x] Cost/latency comparison: Ollama-local vs. Claude-API per task type — `docs/results.md` / `scripts/cost_report.py` (small sample so far — real numbers, not yet real volume)
+- [ ] Short recorded demo (triage → retrieval → draft → guardrail check → escalation) — script ready (`docs/demo-script.md`), recording itself still to do
+- [x] README that leads with the platform story, not the CRUD app
 
 ## 6. Review notes / gaps to close
 
