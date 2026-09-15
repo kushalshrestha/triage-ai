@@ -5,7 +5,7 @@ testing-strategy.md).
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.models import DocChunk, User, UserRole
+from app.models import DocChunk, KnowledgeDoc, User, UserRole
 from app.security import create_access_token, hash_password
 
 PASSWORD_RESET_DOC = (
@@ -58,7 +58,9 @@ def test_staff_can_ingest_doc_and_chunks_are_created(client: TestClient, db_sess
         headers=_auth_header(token),
     )
     assert response.status_code == 201
-    doc_id = response.json()["id"]
+    body = response.json()
+    doc_id = body["id"]
+    assert body["content"] == PASSWORD_RESET_DOC
 
     chunks = db_session.query(DocChunk).filter_by(knowledge_doc_id=doc_id).all()
     assert len(chunks) >= 1
@@ -102,3 +104,59 @@ def test_search_is_available_to_customers_too(client: TestClient, db_session: Se
         "/knowledge/search", params={"q": "refund"}, headers=_auth_header(customer_token)
     )
     assert response.status_code == 200
+
+
+def test_list_includes_content(client: TestClient, db_session: Session):
+    token = _make_staff_user(db_session, "list-agent@example.com")
+    client.post(
+        "/knowledge",
+        json={"title": "Billing refund FAQ", "content": BILLING_REFUND_DOC},
+        headers=_auth_header(token),
+    )
+
+    response = client.get("/knowledge", headers=_auth_header(token))
+    assert response.status_code == 200
+    doc = next(d for d in response.json() if d["title"] == "Billing refund FAQ")
+    assert doc["content"] == BILLING_REFUND_DOC
+
+
+def test_customer_cannot_delete_knowledge_doc(client: TestClient, db_session: Session):
+    staff_token = _make_staff_user(db_session, "delete-owner-agent@example.com")
+    created = client.post(
+        "/knowledge",
+        json={"title": "Password reset", "content": PASSWORD_RESET_DOC},
+        headers=_auth_header(staff_token),
+    ).json()
+
+    customer_token = _register_customer(client, "cannot-delete@example.com")
+    response = client.delete(f"/knowledge/{created['id']}", headers=_auth_header(customer_token))
+    assert response.status_code == 403
+
+
+def test_staff_can_delete_knowledge_doc_and_chunks_go_with_it(
+    client: TestClient, db_session: Session
+):
+    token = _make_staff_user(db_session, "delete-agent@example.com")
+    created = client.post(
+        "/knowledge",
+        json={"title": "Password reset", "content": PASSWORD_RESET_DOC},
+        headers=_auth_header(token),
+    ).json()
+
+    response = client.delete(f"/knowledge/{created['id']}", headers=_auth_header(token))
+    assert response.status_code == 204
+
+    assert db_session.get(KnowledgeDoc, created["id"]) is None
+    remaining_chunks = db_session.query(DocChunk).filter_by(knowledge_doc_id=created["id"]).all()
+    assert remaining_chunks == []
+
+    list_response = client.get("/knowledge", headers=_auth_header(token))
+    assert all(d["id"] != created["id"] for d in list_response.json())
+
+
+def test_deleting_unknown_knowledge_doc_returns_404(client: TestClient, db_session: Session):
+    token = _make_staff_user(db_session, "delete-404-agent@example.com")
+    response = client.delete(
+        "/knowledge/00000000-0000-0000-0000-000000000000", headers=_auth_header(token)
+    )
+    assert response.status_code == 404
