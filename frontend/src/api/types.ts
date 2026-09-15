@@ -20,6 +20,7 @@ export type TicketStatus = "open" | "pending" | "resolved" | "closed" | "escalat
 export interface TicketRead {
   id: string;
   requester_id: string;
+  requester_email: string;
   assigned_agent_id: string | null;
   subject: string;
   body: string;
@@ -42,5 +43,17 @@ export interface TicketEventRead {
   actor_id: string | null;
   event_type: TicketEventType;
   payload: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export type DecisionType = "auto_respond" | "draft_for_review" | "escalate";
+
+export interface AgentDecisionRead {
+  id: string;
+  ticket_id: string;
+  decision_type: DecisionType;
+  model_used: string;
+  confidence_score: number | null;
+  reasoning: string | null;
   created_at: string;
 }

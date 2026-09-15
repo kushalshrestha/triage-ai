@@ -48,7 +48,8 @@ label {
 }
 
 input,
-textarea {
+textarea,
+select {
   padding: 0.5rem;
   border: 1px solid var(--border);
   border-radius: 4px;
@@ -104,6 +105,75 @@ button:disabled {
   border: 1px solid var(--border);
   border-radius: 6px;
   background: white;
+}
+
+.ticket-list-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.staff-panel {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+  background: white;
+  margin-bottom: 1.5rem;
+}
+
+.staff-panel-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.staff-panel-row label {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.staff-panel-row button {
+  align-self: auto;
+}
+
+.decision-panel {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.draft-event {
+  background: #f0f4fd;
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+}
+
+.draft-event-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.draft-event-text {
+  white-space: pre-wrap;
+}
+
+.badge {
+  font-size: 0.7rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+}
+
+.badge-grounded {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.badge-ungrounded {
+  background: #fee2e2;
+  color: #991b1b;
 }
 
 .event-list li {

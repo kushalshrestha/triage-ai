@@ -7,6 +7,7 @@ import { useAuth } from "../auth/AuthContext";
 
 export function TicketListPage() {
   const { user, logout } = useAuth();
+  const isStaff = user?.role === "agent" || user?.role === "admin";
   const [tickets, setTickets] = useState<TicketRead[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -44,27 +45,29 @@ export function TicketListPage() {
   return (
     <div className="page">
       <header className="page-header">
-        <h1>Your tickets</h1>
+        <h1>{isStaff ? "All tickets" : "Your tickets"}</h1>
         <div>
           <span className="muted">{user?.email}</span>
           <button onClick={logout}>Log out</button>
         </div>
       </header>
 
-      <form onSubmit={handleCreate} className="new-ticket-form">
-        <h2>New ticket</h2>
-        <label>
-          Subject
-          <input value={subject} onChange={(e) => setSubject(e.target.value)} required />
-        </label>
-        <label>
-          Description
-          <textarea value={body} onChange={(e) => setBody(e.target.value)} required rows={3} />
-        </label>
-        <button type="submit" disabled={isCreating}>
-          {isCreating ? "Creating…" : "Create ticket"}
-        </button>
-      </form>
+      {!isStaff && (
+        <form onSubmit={handleCreate} className="new-ticket-form">
+          <h2>New ticket</h2>
+          <label>
+            Subject
+            <input value={subject} onChange={(e) => setSubject(e.target.value)} required />
+          </label>
+          <label>
+            Description
+            <textarea value={body} onChange={(e) => setBody(e.target.value)} required rows={3} />
+          </label>
+          <button type="submit" disabled={isCreating}>
+            {isCreating ? "Creating…" : "Create ticket"}
+          </button>
+        </form>
+      )}
 
       {error && <p className="form-error">{error}</p>}
 
@@ -76,7 +79,10 @@ export function TicketListPage() {
         <ul className="ticket-list">
           {tickets.map((ticket) => (
             <li key={ticket.id}>
-              <Link to={`/tickets/${ticket.id}`}>{ticket.subject}</Link>
+              <span className="ticket-list-main">
+                <Link to={`/tickets/${ticket.id}`}>{ticket.subject}</Link>
+                {isStaff && <span className="muted">{ticket.requester_email}</span>}
+              </span>
               <span className={`status status-${ticket.status}`}>{ticket.status}</span>
             </li>
           ))}

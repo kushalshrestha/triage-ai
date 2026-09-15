@@ -46,6 +46,7 @@ def test_create_ticket_persists_and_returns_id(client: TestClient):
     body = response.json()
     assert "id" in body
     assert body["status"] == "open"
+    assert body["requester_email"] == "requester@example.com"
 
 
 def test_customer_can_read_their_own_ticket(client: TestClient):
@@ -104,7 +105,8 @@ def test_agent_can_read_and_list_any_ticket(client: TestClient, db_session: Sess
 
     list_response = client.get("/tickets", headers=_auth_header(agent_token))
     assert list_response.status_code == 200
-    assert any(t["id"] == created["id"] for t in list_response.json())
+    matching = next(t for t in list_response.json() if t["id"] == created["id"])
+    assert matching["requester_email"] == "agent-view-target@example.com"
 
 
 def test_customer_cannot_patch_ticket_status(client: TestClient):
