@@ -1,4 +1,13 @@
-import type { AgentDecisionRead, Token, TicketEventRead, TicketRead, TicketStatus, UserRead } from "./types";
+import type {
+  AgentDecisionRead,
+  ChunkSearchResult,
+  KnowledgeDocRead,
+  Token,
+  TicketEventRead,
+  TicketRead,
+  TicketStatus,
+  UserRead,
+} from "./types";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
@@ -92,4 +101,27 @@ export function updateTicketStatus(
     method: "PATCH",
     body: JSON.stringify(payload),
   });
+}
+
+export function listKnowledgeDocs(): Promise<KnowledgeDocRead[]> {
+  return request<KnowledgeDocRead[]>("/knowledge");
+}
+
+export function createKnowledgeDoc(
+  title: string,
+  source: string,
+  content: string,
+): Promise<KnowledgeDocRead> {
+  return request<KnowledgeDocRead>("/knowledge", {
+    method: "POST",
+    body: JSON.stringify({ title, source: source || null, content }),
+  });
+}
+
+export function deleteKnowledgeDoc(docId: string): Promise<void> {
+  return request<void>(`/knowledge/${docId}`, { method: "DELETE" });
+}
+
+export function searchKnowledge(q: string, k = 5): Promise<ChunkSearchResult[]> {
+  return request<ChunkSearchResult[]>(`/knowledge/search?${new URLSearchParams({ q, k: String(k) })}`);
 }
