@@ -51,6 +51,10 @@ class Ticket(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         back_populates="tickets", foreign_keys=[requester_id]
     )
     assigned_agent: Mapped["User | None"] = relationship(foreign_keys=[assigned_agent_id])
+
+    @property
+    def requester_email(self) -> str:
+        return self.requester.email
     events: Mapped[list["TicketEvent"]] = relationship(
         back_populates="ticket", cascade="all, delete-orphan"
     )

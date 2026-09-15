@@ -1,4 +1,4 @@
-import type { Token, TicketEventRead, TicketRead, UserRead } from "./types";
+import type { AgentDecisionRead, Token, TicketEventRead, TicketRead, TicketStatus, UserRead } from "./types";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
@@ -77,5 +77,19 @@ export function addTicketComment(ticketId: string, body: string): Promise<Ticket
   return request<TicketEventRead>(`/tickets/${ticketId}/events`, {
     method: "POST",
     body: JSON.stringify({ body }),
+  });
+}
+
+export function triggerTriage(ticketId: string): Promise<AgentDecisionRead> {
+  return request<AgentDecisionRead>(`/tickets/${ticketId}/triage`, { method: "POST" });
+}
+
+export function updateTicketStatus(
+  ticketId: string,
+  payload: { status?: TicketStatus; assigned_agent_id?: string },
+): Promise<TicketRead> {
+  return request<TicketRead>(`/tickets/${ticketId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
   });
 }

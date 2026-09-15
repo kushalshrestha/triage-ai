@@ -14,6 +14,7 @@ class TicketCreate(BaseModel):
 class TicketRead(BaseModel):
     id: uuid.UUID
     requester_id: uuid.UUID
+    requester_email: str
     assigned_agent_id: uuid.UUID | None
     subject: str
     body: str
