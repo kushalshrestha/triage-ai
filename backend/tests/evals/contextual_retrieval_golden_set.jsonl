@@ -1,0 +1,5 @@
+{"query": "How long is the free trial before I get charged?", "expected_chunks": [{"doc_title": "Membership & Billing Policy", "doc_source": "contextual-eval-seed", "chunk_index": 0}]}
+{"query": "Can I get reminded before a big renewal charge?", "expected_chunks": [{"doc_title": "Membership & Billing Policy", "doc_source": "contextual-eval-seed", "chunk_index": 0}]}
+{"query": "If I forgot to cancel before renewal and got charged, what should I do?", "expected_chunks": [{"doc_title": "Membership & Billing Policy", "doc_source": "contextual-eval-seed", "chunk_index": 1}]}
+{"query": "Does cancelling my subscription automatically refund the last charge?", "expected_chunks": [{"doc_title": "Membership & Billing Policy", "doc_source": "contextual-eval-seed", "chunk_index": 2}]}
+{"query": "What's the refund eligibility window in days?", "expected_chunks": [{"doc_title": "Membership & Billing Policy", "doc_source": "contextual-eval-seed", "chunk_index": 1}, {"doc_title": "Membership & Billing Policy", "doc_source": "contextual-eval-seed", "chunk_index": 2}]}
