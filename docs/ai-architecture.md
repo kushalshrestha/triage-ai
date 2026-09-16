@@ -96,8 +96,19 @@ as placeholder text by the time you're presenting the project.
   small/too capable, together, to have headroom left for hybrid fusion
   to demonstrate value; a larger, noisier, more realistic knowledge
   base is the condition under which it's expected to actually help.
-  Phase 11 (contextual retrieval) gets compared against this same
-  perfect baseline, with the same headroom caveat.
+- **Real-data retrieval eval (Phase 11, ADR-0014):**
+  `tests/evals/test_retrieval_eval_real_corpus.py` runs the same
+  recall@k/MRR@k measurement against a real, public dataset (MakTek
+  Customer Support FAQs, Apache 2.0, deduplicated to 89 genuinely
+  unique Q&A pairs — see ADR-0014 for a real data-quality finding: the
+  source file repeated 10 questions 12-13x each) instead of the
+  synthetic 9-doc corpus. This finally produced non-perfect, headroom-
+  bearing numbers: **recall@3 = 0.94, MRR@3 = 0.92** (18 queries), with
+  one real, fully-diagnosed miss (a generic "return policy" query
+  crowded out of the top-3 by three of the corpus's 17 near-duplicate
+  specific-condition return FAQs) and one real rank-2 near-miss. Phase
+  12 (contextual retrieval) gets compared against this real baseline
+  going forward, not the perfect synthetic one.
 - **CI gate:** `.github/workflows/ci.yml`'s `eval-smoke` job runs every
   free eval (no Claude call — `@pytest.mark.costly` marks the one that
   isn't) blocking on every PR; `eval-full` runs everything, including
