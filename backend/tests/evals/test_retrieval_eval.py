@@ -156,7 +156,13 @@ def test_retrieval_recall_and_mrr_at_k_meet_thresholds(
         score=recall,
         threshold=RECALL_THRESHOLD,
         passed=recall_passed,
-        details={"metric": "recall@k", "k": K, "golden_set_size": len(golden_set), "hits": hits},
+        details={
+            "metric": "recall@k",
+            "k": K,
+            "corpus": "synthetic",
+            "golden_set_size": len(golden_set),
+            "hits": hits,
+        },
     )
     record_eval_run(
         run_type=EvalRunType.RETRIEVAL,
@@ -167,6 +173,7 @@ def test_retrieval_recall_and_mrr_at_k_meet_thresholds(
         details={
             "metric": "mrr@k",
             "k": K,
+            "corpus": "synthetic",
             "golden_set_size": len(golden_set),
             "reciprocal_ranks": reciprocal_ranks,
         },

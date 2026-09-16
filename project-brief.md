@@ -111,4 +111,7 @@ don't claim it's done when it isn't.
 - Which open model to run under Ollama (size vs. laptop resources)
 - LLM-as-judge model choice and rubric
 - Escalation confidence threshold
-- Public dataset (or synthetic strategy) for golden-set seeding
+- ~~Public dataset (or synthetic strategy) for golden-set seeding~~ —
+  resolved for retrieval (ADR-0014): MakTek Customer Support FAQs
+  (Apache 2.0), deduplicated to 89 real Q&A pairs. Classification/
+  groundedness golden sets remain synthetic; open if ever prioritized.

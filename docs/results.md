@@ -129,6 +129,13 @@ not fixed by writing this report:
   hardcoded threshold as its own baseline; a real snapshot-per-version
   system is deferred until there's a second prompt version per prompt
   to actually compare against.
-- **Golden sets are synthetic**: real (not just synthetic) examples
-  from an anonymized support-ticket dataset were project-brief.md's
-  stated intent for golden-set sourcing; not done yet.
+- **Golden sets are synthetic**: resolved for the retrieval eval
+  specifically — Phase 11 (ADR-0014) added a real, public,
+  Apache-2.0-licensed customer-support FAQ dataset (89 deduplicated
+  Q&A pairs) as a second retrieval eval alongside the original
+  synthetic one, finally producing non-perfect, real-headroom numbers
+  (recall@3 = 0.94, MRR@3 = 0.92, vs. a perfect 1.0/1.0 on the
+  synthetic corpus). Classification accuracy's `golden_set.jsonl` and
+  the groundedness eval's two hand-crafted examples remain synthetic —
+  this was project-brief.md's stated intent for golden-set sourcing in
+  general, and only the retrieval slice of it is done.
