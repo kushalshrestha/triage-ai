@@ -6,3 +6,7 @@
 {"query": "how do I set up two-factor authentication with an authenticator app", "expected_chunks": [{"doc_title": "Two-Factor Authentication & Device Management", "doc_source": "eval-seed", "chunk_index": 0}]}
 {"query": "I see a device signed into my account that isn't mine, how do I remove it", "expected_chunks": [{"doc_title": "Two-Factor Authentication & Device Management", "doc_source": "eval-seed", "chunk_index": 1}]}
 {"query": "how do I force a suspicious device to sign out and require a new password", "expected_chunks": [{"doc_title": "Two-Factor Authentication & Device Management", "doc_source": "eval-seed", "chunk_index": 1}]}
+{"query": "what does error code ERR-7734 mean", "expected_chunks": [{"doc_title": "Overage Error Code Reference", "doc_source": "eval-seed", "chunk_index": 0}]}
+{"query": "my account shows reference code ERR-7735, what happened", "expected_chunks": [{"doc_title": "Overage Error Code Reference", "doc_source": "eval-seed", "chunk_index": 0}]}
+{"query": "how much storage does the Vantage plan include", "expected_chunks": [{"doc_title": "Storage Quota — Vantage Plan", "doc_source": "eval-seed", "chunk_index": 0}]}
+{"query": "what is the storage limit on the Starter plan", "expected_chunks": [{"doc_title": "Storage Quota — Starter Plan", "doc_source": "eval-seed", "chunk_index": 0}]}

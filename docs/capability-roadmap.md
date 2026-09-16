@@ -11,5 +11,5 @@ not as an afterthought.
 |---|---|---|---|
 | 1–8 | (original build sequence) | Schema → Auth/CRUD → Frontend → RAG → Agent → Guardrails → LLMOps → Packaging | Done |
 | 9 | Knowledge Ingestion | Retrieval eval (chunk-level recall@k + MRR@k, see ADR-0012) | Done |
-| 10 | Knowledge Ingestion | Hybrid search + RRF | Planned |
+| 10 | Knowledge Ingestion | Hybrid search + RRF (see ADR-0013 — implemented; no measurable win yet on this eval corpus) | Done |
 | 11 | Knowledge Ingestion | Contextual retrieval | Planned |
