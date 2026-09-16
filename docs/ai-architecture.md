@@ -68,13 +68,27 @@ as placeholder text by the time you're presenting the project.
 - **Golden set:** size, how examples were sourced (synthetic vs. real,
   see project-brief.md), how it's kept representative over time.
 - **Metrics:** classification accuracy (`test_classification_eval.py`),
-  retrieval recall@k (`test_retrieval_eval.py`), RAG faithfulness/
-  groundedness (`test_groundedness_eval.py`), triage routing accuracy
-  (`test_triage_eval.py`) — each asserts against a hardcoded threshold
-  in its own test file, which *is* the regression baseline for now
-  (see ADR-0010 for why a separate snapshot-file system would be
-  premature at one prompt version each). A run below threshold fails
-  its test and blocks CI.
+  retrieval recall@k and MRR@k (`test_retrieval_eval.py`), RAG
+  faithfulness/groundedness (`test_groundedness_eval.py`), triage
+  routing accuracy (`test_triage_eval.py`) — each asserts against a
+  hardcoded threshold in its own test file, which *is* the regression
+  baseline for now (see ADR-0010 for why a separate snapshot-file
+  system would be premature at one prompt version each). A run below
+  threshold fails its test and blocks CI.
+- **Retrieval eval detail:** `tests/evals/retrieval_golden_set.jsonl`
+  (8 queries as of Phase 9) references expected answers as
+  `(doc_title, doc_source, chunk_index)` tuples rather than DB chunk
+  ids, since ids aren't stable across re-ingestion — see ADR-0012.
+  Recall@3 and MRR@3 are logged as separate `EvalRun` rows
+  (`run_type=RETRIEVAL`, distinguished by `details.metric`). Current
+  measured baseline (cosine-only retrieval, the only implementation
+  that exists as of Phase 9): **recall@3 = 1.0, MRR@3 = 1.0** — every
+  golden-set query's expected chunk was retrieved at rank 1. This is
+  the number Phase 10 (hybrid search + RRF) and Phase 11 (contextual
+  retrieval) get compared against; note it's a perfect score on the
+  *current* golden set, which means the golden set itself doesn't yet
+  contain queries hard/ambiguous enough to show improvement headroom —
+  worth revisiting before those phases land.
 - **CI gate:** `.github/workflows/ci.yml`'s `eval-smoke` job runs every
   free eval (no Claude call — `@pytest.mark.costly` marks the one that
   isn't) blocking on every PR; `eval-full` runs everything, including

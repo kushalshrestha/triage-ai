@@ -1,5 +1,8 @@
-{"query": "I can't log in and need to reset my password", "expected_doc_title": "Password Reset"}
-{"query": "when will my refund show up on my card", "expected_doc_title": "Billing Refunds"}
-{"query": "how do I change the email address on my account", "expected_doc_title": "Change Account Email"}
-{"query": "is there a dark mode option in the dashboard", "expected_doc_title": "Dark Mode Availability"}
-{"query": "my data export has been stuck at zero percent for two days", "expected_doc_title": "Data Export Status"}
+{"query": "I can't log in and need to reset my password", "expected_chunks": [{"doc_title": "Password Reset", "doc_source": "eval-seed", "chunk_index": 0}]}
+{"query": "when will my refund show up on my card", "expected_chunks": [{"doc_title": "Billing Refunds", "doc_source": "eval-seed", "chunk_index": 0}]}
+{"query": "how do I change the email address on my account", "expected_chunks": [{"doc_title": "Change Account Email", "doc_source": "eval-seed", "chunk_index": 0}]}
+{"query": "is there a dark mode option in the dashboard", "expected_chunks": [{"doc_title": "Dark Mode Availability", "doc_source": "eval-seed", "chunk_index": 0}]}
+{"query": "my data export has been stuck at zero percent for two days", "expected_chunks": [{"doc_title": "Data Export Status", "doc_source": "eval-seed", "chunk_index": 0}]}
+{"query": "how do I set up two-factor authentication with an authenticator app", "expected_chunks": [{"doc_title": "Two-Factor Authentication & Device Management", "doc_source": "eval-seed", "chunk_index": 0}]}
+{"query": "I see a device signed into my account that isn't mine, how do I remove it", "expected_chunks": [{"doc_title": "Two-Factor Authentication & Device Management", "doc_source": "eval-seed", "chunk_index": 1}]}
+{"query": "how do I force a suspicious device to sign out and require a new password", "expected_chunks": [{"doc_title": "Two-Factor Authentication & Device Management", "doc_source": "eval-seed", "chunk_index": 1}]}

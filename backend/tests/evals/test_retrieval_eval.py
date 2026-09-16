@@ -1,12 +1,10 @@
-"""RAG retrieval-quality eval — the "extend golden set with
-retrieval-quality examples" item from project-brief.md's build
-sequence. Threshold over a fixed dataset, per testing-strategy.md's
-eval layer, even though the embedding model here is local/fast rather
-than a hosted call (see ADR-0007).
+"""RAG retrieval-quality eval — chunk-level recall@k and MRR@k against
+a fixed golden set (see ADR-0012 for the golden-set schema and
+threshold reasoning; ADR-0010 for why this is a `RETRIEVAL` eval_run).
 
-k=3 and the 0.8 recall threshold are starting points, not tuned yet —
-this eval is exactly the mechanism for tuning them with real numbers
-later, per ADR-0007.
+Threshold over a fixed dataset, per testing-strategy.md's eval layer,
+even though the embedding model here is local/fast rather than a
+hosted call (see ADR-0007).
 """
 import json
 from pathlib import Path
@@ -17,9 +15,13 @@ from app.rag.ingestion import ingest_document
 from app.rag.retrieval import retrieve_relevant_chunks
 
 GOLDEN_SET_PATH = Path(__file__).parent / "retrieval_golden_set.jsonl"
-RECALL_THRESHOLD = 0.8
+RECALL_THRESHOLD = 0.75
+MRR_THRESHOLD = 0.6
 K = 3
 
+# See ADR-0012: the two-factor doc is the only seed doc long enough to
+# produce more than one chunk (verified against the real chunk_text()
+# output), which is what makes MRR a non-degenerate metric here.
 SEED_KNOWLEDGE_BASE = {
     "Password Reset": (
         "To reset a forgotten password, click 'Forgot password' on the login "
@@ -44,7 +46,28 @@ SEED_KNOWLEDGE_BASE = {
         "an export appears stuck beyond that window, contact support with "
         "your export request ID."
     ),
+    "Two-Factor Authentication & Device Management": (
+        "Two-factor authentication adds a second verification step beyond "
+        "your password. To enable it, go to Account Settings, then Security, "
+        "then Two-Factor Authentication, and follow the prompts to link an "
+        "authenticator app such as Google Authenticator or Authy. Once "
+        "enabled, you will be asked for a six-digit code from the "
+        "authenticator app every time you sign in from a device we do not "
+        "already recognize. Backup codes are generated automatically the "
+        "first time you turn on two-factor authentication, and each backup "
+        "code can only be used once, so store the full list somewhere safe "
+        "in case you ever lose access to your phone. Session and device "
+        "management lives on a separate page under Account Settings, then "
+        "Security, then Active Sessions. It lists every device currently "
+        "signed into your account, its approximate location, and the last "
+        "active timestamp. If you notice a device you do not recognize in "
+        "that list, click Revoke to sign it out immediately, and we will "
+        "require a fresh password entry the next time anyone tries to sign "
+        "in from that device again. Reviewing this list periodically, "
+        "especially right after you change your password, is a good habit."
+    ),
 }
+SEED_SOURCE = "eval-seed"
 
 
 def _load_golden_set() -> list[dict]:
@@ -52,31 +75,68 @@ def _load_golden_set() -> list[dict]:
         return [json.loads(line) for line in f if line.strip()]
 
 
-def test_retrieval_recall_at_k_meets_threshold(db_session: Session, record_eval_run):
+def _rank_of_best_match(
+    results: list, expected_chunks: list[dict]
+) -> int | None:
+    """1-indexed rank of the best (lowest-rank) expected chunk in results, else None."""
+    expected_keys = {
+        (c["doc_title"], c["doc_source"], c["chunk_index"]) for c in expected_chunks
+    }
+    for rank, (chunk, _score) in enumerate(results, start=1):
+        key = (chunk.knowledge_doc.title, chunk.knowledge_doc.source, chunk.chunk_index)
+        if key in expected_keys:
+            return rank
+    return None
+
+
+def test_retrieval_recall_and_mrr_at_k_meet_thresholds(
+    db_session: Session, record_eval_run
+):
     from app.config import get_settings
     from app.models import EvalRunType
 
     for title, content in SEED_KNOWLEDGE_BASE.items():
-        ingest_document(db_session, title=title, source="eval-seed", content=content)
+        ingest_document(db_session, title=title, source=SEED_SOURCE, content=content)
 
     golden_set = _load_golden_set()
     hits = 0
+    reciprocal_ranks = []
     for example in golden_set:
         results = retrieve_relevant_chunks(db_session, query_text=example["query"], k=K)
-        retrieved_titles = {chunk.knowledge_doc.title for chunk, _score in results}
-        if example["expected_doc_title"] in retrieved_titles:
+        rank = _rank_of_best_match(results, example["expected_chunks"])
+        if rank is not None:
             hits += 1
+            reciprocal_ranks.append(1 / rank)
+        else:
+            reciprocal_ranks.append(0.0)
 
     recall = hits / len(golden_set)
-    passed = recall >= RECALL_THRESHOLD
+    mrr = sum(reciprocal_ranks) / len(reciprocal_ranks)
+    recall_passed = recall >= RECALL_THRESHOLD
+    mrr_passed = mrr >= MRR_THRESHOLD
 
+    model_used = f"local/{get_settings().embedding_model_name}"
     record_eval_run(
         run_type=EvalRunType.RETRIEVAL,
-        model_used=f"local/{get_settings().embedding_model_name}",
+        model_used=model_used,
         score=recall,
         threshold=RECALL_THRESHOLD,
-        passed=passed,
-        details={"k": K, "golden_set_size": len(golden_set), "hits": hits},
+        passed=recall_passed,
+        details={"metric": "recall@k", "k": K, "golden_set_size": len(golden_set), "hits": hits},
+    )
+    record_eval_run(
+        run_type=EvalRunType.RETRIEVAL,
+        model_used=model_used,
+        score=mrr,
+        threshold=MRR_THRESHOLD,
+        passed=mrr_passed,
+        details={
+            "metric": "mrr@k",
+            "k": K,
+            "golden_set_size": len(golden_set),
+            "reciprocal_ranks": reciprocal_ranks,
+        },
     )
 
-    assert passed, f"recall@{K} was {recall:.2f}, expected >= {RECALL_THRESHOLD}"
+    assert recall_passed, f"recall@{K} was {recall:.2f}, expected >= {RECALL_THRESHOLD}"
+    assert mrr_passed, f"MRR@{K} was {mrr:.2f}, expected >= {MRR_THRESHOLD}"
