@@ -15,11 +15,16 @@ as placeholder text by the time you're presenting the project.
   the "Ollama-hosted for local work" framing elsewhere in this doc; see
   ADR-0007 for the disk-budget reasoning. `doc_chunks.embedding` is
   `vector(384)`.
-- **Retrieval:** top-k cosine-similarity search against
-  `doc_chunks.embedding` (`app/rag/retrieval.py`), joined to originating
-  `knowledge_docs`. k=3 is the current starting value — not yet tuned
-  against real eval data; `tests/evals/test_retrieval_eval.py` is the
-  mechanism for tuning it with actual numbers later.
+- **Retrieval:** hybrid search as of Phase 10 (`app/rag/retrieval.py`,
+  see ADR-0013) — top-10 candidates from cosine-similarity search
+  against `doc_chunks.embedding` plus top-10 from Postgres full-text
+  search (`to_tsvector`/`plainto_tsquery`/`ts_rank`, backed by a GIN
+  index), fused via Reciprocal Rank Fusion (k=60) down to the final
+  top-k=3, joined to originating `knowledge_docs`. The returned score
+  is always real cosine similarity (never the RRF fusion score) —
+  `app/agent/orchestrator.py`'s routing thresholds depend on that. k=3
+  is still the starting value; `tests/evals/test_retrieval_eval.py` is
+  the mechanism for tuning it with actual numbers later.
 - **Faithfulness:** how eval measures whether a response is actually
   grounded in what was retrieved, vs. hallucinated.
 
@@ -76,19 +81,23 @@ as placeholder text by the time you're presenting the project.
   system would be premature at one prompt version each). A run below
   threshold fails its test and blocks CI.
 - **Retrieval eval detail:** `tests/evals/retrieval_golden_set.jsonl`
-  (8 queries as of Phase 9) references expected answers as
+  (12 queries as of Phase 10, up from 8) references expected answers as
   `(doc_title, doc_source, chunk_index)` tuples rather than DB chunk
   ids, since ids aren't stable across re-ingestion — see ADR-0012.
   Recall@3 and MRR@3 are logged as separate `EvalRun` rows
   (`run_type=RETRIEVAL`, distinguished by `details.metric`). Current
-  measured baseline (cosine-only retrieval, the only implementation
-  that exists as of Phase 9): **recall@3 = 1.0, MRR@3 = 1.0** — every
-  golden-set query's expected chunk was retrieved at rank 1. This is
-  the number Phase 10 (hybrid search + RRF) and Phase 11 (contextual
-  retrieval) get compared against; note it's a perfect score on the
-  *current* golden set, which means the golden set itself doesn't yet
-  contain queries hard/ambiguous enough to show improvement headroom —
-  worth revisiting before those phases land.
+  measured result, vector-only vs. hybrid, on the same golden set
+  (ADR-0013): **recall@3 = 1.0 / MRR@3 = 1.0 for both** — hybrid search
+  (Phase 10) does not show a measurable improvement over pure vector
+  search here, even on cases (exact error codes, near-duplicate plan
+  names) specifically built to expose vector search's theoretical weak
+  spot. Recorded honestly as "not proven on this test," not "doesn't
+  work" — this project's corpus and embedding model are both too
+  small/too capable, together, to have headroom left for hybrid fusion
+  to demonstrate value; a larger, noisier, more realistic knowledge
+  base is the condition under which it's expected to actually help.
+  Phase 11 (contextual retrieval) gets compared against this same
+  perfect baseline, with the same headroom caveat.
 - **CI gate:** `.github/workflows/ci.yml`'s `eval-smoke` job runs every
   free eval (no Claude call — `@pytest.mark.costly` marks the one that
   isn't) blocking on every PR; `eval-full` runs everything, including

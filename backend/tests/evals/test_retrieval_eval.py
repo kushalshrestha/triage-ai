@@ -1,6 +1,10 @@
 """RAG retrieval-quality eval — chunk-level recall@k and MRR@k against
 a fixed golden set (see ADR-0012 for the golden-set schema and
 threshold reasoning; ADR-0010 for why this is a `RETRIEVAL` eval_run).
+Since Phase 10 (ADR-0013), `retrieve_relevant_chunks` is hybrid
+(vector + Postgres full-text search, fused via RRF) rather than
+pure cosine similarity — this eval exercises whichever implementation
+is currently behind that function, without needing to change.
 
 Threshold over a fixed dataset, per testing-strategy.md's eval layer,
 even though the embedding model here is local/fast rather than a
@@ -66,6 +70,36 @@ SEED_KNOWLEDGE_BASE = {
         "in from that device again. Reviewing this list periodically, "
         "especially right after you change your password, is a good habit."
     ),
+    # Deliberately confusable with "Billing Refunds" above (both are
+    # generic-sounding billing prose) except for two exact, unusual
+    # tokens — added in Phase 10 (ADR-0013) specifically to give the
+    # keyword side of hybrid search something pure vector search can't
+    # already solve perfectly. See ai-architecture.md for the measured
+    # before/after (vector-only vs. hybrid) on these two queries.
+    "Overage Error Code Reference": (
+        "When your account exceeds its plan included usage, the dashboard shows a billing "
+        "notice with a reference code so support can identify exactly what triggered it. "
+        "Reference code ERR-7734 means your account went over the API rate limit for the "
+        "current billing cycle. Reference code ERR-7735 means your account went over its "
+        "storage quota. Always include the exact reference code when you contact support so "
+        "the right usage report can be pulled up immediately."
+    ),
+    # A true near-duplicate minimal pair — identical wording except the
+    # plan name and the GB number — added alongside the error-code doc
+    # to stress-test disambiguation between semantically-near-identical
+    # documents. Measured result (ADR-0013): the local embedding model
+    # already disambiguates both of these correctly at rank 1 without
+    # any keyword help, same as the error-code case above.
+    "Storage Quota — Starter Plan": (
+        "The Starter plan includes 10 GB of storage. Once you reach the 10 GB limit, new "
+        "uploads are blocked until you free up space or upgrade. You can check current usage "
+        "anytime from the Storage page under Account Settings."
+    ),
+    "Storage Quota — Vantage Plan": (
+        "The Vantage plan includes 500 GB of storage. Once you reach the 500 GB limit, new "
+        "uploads are blocked until you free up space or upgrade. You can check current usage "
+        "anytime from the Storage page under Account Settings."
+    ),
 }
 SEED_SOURCE = "eval-seed"
 
@@ -115,7 +149,7 @@ def test_retrieval_recall_and_mrr_at_k_meet_thresholds(
     recall_passed = recall >= RECALL_THRESHOLD
     mrr_passed = mrr >= MRR_THRESHOLD
 
-    model_used = f"local/{get_settings().embedding_model_name}"
+    model_used = f"hybrid(local/{get_settings().embedding_model_name}+postgres-fts)"
     record_eval_run(
         run_type=EvalRunType.RETRIEVAL,
         model_used=model_used,
