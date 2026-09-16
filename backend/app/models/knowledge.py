@@ -33,5 +33,9 @@ class DocChunk(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIM), nullable=True)
+    # Contextual-retrieval blurb prepended to `content` before embedding
+    # (see ADR-0015) — never shown to users/cited, kept separate from
+    # `content` on purpose. Null unless ingestion opted in.
+    context_prefix: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     knowledge_doc: Mapped["KnowledgeDoc"] = relationship(back_populates="chunks")

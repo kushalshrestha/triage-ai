@@ -15,6 +15,21 @@ as placeholder text by the time you're presenting the project.
   the "Ollama-hosted for local work" framing elsewhere in this doc; see
   ADR-0007 for the disk-budget reasoning. `doc_chunks.embedding` is
   `vector(384)`.
+- **Contextual retrieval (Phase 12, ADR-0015):** opt-in, off by
+  default — `ingest_document(..., use_contextual_retrieval=True)`
+  prepends a Claude-generated blurb situating each chunk within its
+  parent document before embedding, but only for documents that
+  produced more than one chunk (a single chunk already contains 100%
+  of its own context). Given almost every document in this project's
+  corpus is single-chunk, this triggers rarely by design. Measured
+  result on the one multi-section document built specifically to test
+  it: recall@3 = 1.0 both with and without; MRR@3 went from 0.90
+  (without) to 0.87 (with) — contextualization didn't help here, and
+  the reason is understood (a chunk genuinely straddling two topics
+  got a context blurb that made it look *more* similar to a
+  neighboring chunk's query, not less). Not enabled by default as a
+  result; the generated blurb is stored separately
+  (`doc_chunks.context_prefix`), never mixed into `content`.
 - **Retrieval:** hybrid search as of Phase 10 (`app/rag/retrieval.py`,
   see ADR-0013) — top-10 candidates from cosine-similarity search
   against `doc_chunks.embedding` plus top-10 from Postgres full-text
