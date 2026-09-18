@@ -18,7 +18,12 @@ import httpx
 from app.config import get_settings
 
 
-def generate(prompt: str) -> str:
+def generate_raw(prompt: str) -> str:
+    """Case-preserving variant of `generate()` — for callers where the
+    response is stored/displayed as-is (e.g. contextual retrieval's
+    chunk-context blurb, see ADR-0015) rather than pattern-matched
+    against known lowercase keywords like `generate()`'s callers do.
+    """
     settings = get_settings()
     response = httpx.post(
         f"{settings.ollama_base_url}/api/generate",
@@ -32,4 +37,8 @@ def generate(prompt: str) -> str:
         timeout=60.0,
     )
     response.raise_for_status()
-    return response.json()["response"].strip().lower()
+    return response.json()["response"].strip()
+
+
+def generate(prompt: str) -> str:
+    return generate_raw(prompt).lower()

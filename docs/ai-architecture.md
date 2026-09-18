@@ -16,19 +16,27 @@ as placeholder text by the time you're presenting the project.
   ADR-0007 for the disk-budget reasoning. `doc_chunks.embedding` is
   `vector(384)`.
 - **Contextual retrieval (Phase 12, ADR-0015):** opt-in, off by
-  default — `ingest_document(..., use_contextual_retrieval=True)`
-  prepends a Claude-generated blurb situating each chunk within its
-  parent document before embedding, but only for documents that
-  produced more than one chunk (a single chunk already contains 100%
-  of its own context). Given almost every document in this project's
-  corpus is single-chunk, this triggers rarely by design. Measured
-  result on the one multi-section document built specifically to test
-  it: recall@3 = 1.0 both with and without; MRR@3 went from 0.90
-  (without) to 0.87 (with) — contextualization didn't help here, and
-  the reason is understood (a chunk genuinely straddling two topics
-  got a context blurb that made it look *more* similar to a
-  neighboring chunk's query, not less). Not enabled by default as a
-  result; the generated blurb is stored separately
+  default — `ingest_document(..., use_contextual_retrieval=True,
+  contextualization_provider="ollama"|"claude"|"heuristic")` prepends a
+  blurb situating each chunk within its parent document before
+  embedding, but only for documents that produced more than one chunk
+  (a single chunk already contains 100% of its own context). Given
+  almost every document in this project's corpus is single-chunk, this
+  triggers rarely by design. Three providers, all measured (not
+  reasoned about) on the one multi-section document built to test
+  this: recall@3 = 1.0 for all four configurations (including doing
+  nothing); MRR@3 was 0.90 without contextualization, 0.90 with Ollama
+  (`llama3.2:1b`, tying the baseline), 0.87 with Claude, and 0.80 with
+  a zero-cost title+position heuristic — the heuristic actively hurt,
+  diagnosed directly: its near-identical boilerplate across a
+  document's chunks pulls their embeddings toward each other instead
+  of distinguishing them. **Claude is deliberately not used** — no
+  provider beat doing nothing, so paying for Claude bought nothing;
+  default is `"ollama"` (free, ties the baseline) despite being ~4x
+  slower than Claude here (~37s vs ~9s for a 3-chunk document,
+  `keep_alive: 0`'s per-chunk reload cost) — acceptable since this path
+  triggers rarely. Not enabled by default given no evidence any
+  provider helps yet; the generated blurb is stored separately
   (`doc_chunks.context_prefix`), never mixed into `content`.
 - **Retrieval:** hybrid search as of Phase 10 (`app/rag/retrieval.py`,
   see ADR-0013) — top-10 candidates from cosine-similarity search
