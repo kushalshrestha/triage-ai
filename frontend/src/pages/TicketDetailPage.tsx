@@ -7,6 +7,23 @@ import { useAuth } from "../auth/AuthContext";
 
 const TICKET_STATUSES: TicketStatus[] = ["open", "pending", "resolved", "closed", "escalated"];
 
+interface Citation {
+  knowledge_doc_title: string;
+  content: string;
+}
+
+function parseCitations(payload: Record<string, unknown> | null | undefined): Citation[] {
+  const raw = payload?.citations;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (c): c is Citation =>
+      typeof c === "object" &&
+      c !== null &&
+      typeof (c as Citation).knowledge_doc_title === "string" &&
+      typeof (c as Citation).content === "string",
+  );
+}
+
 function EventBody({ event }: { event: TicketEventRead }) {
   switch (event.event_type) {
     case "created":
@@ -22,9 +39,7 @@ function EventBody({ event }: { event: TicketEventRead }) {
     case "draft_generated": {
       const replyText = typeof event.payload?.reply_text === "string" ? event.payload.reply_text : "";
       const grounded = event.payload?.grounded;
-      const citedCount = Array.isArray(event.payload?.cited_chunk_indices)
-        ? event.payload.cited_chunk_indices.length
-        : 0;
+      const citations = parseCitations(event.payload);
       return (
         <div className="draft-event">
           <p className="draft-event-meta">
@@ -35,10 +50,22 @@ function EventBody({ event }: { event: TicketEventRead }) {
               </span>
             )}
             <span className="muted">
-              {citedCount} source{citedCount === 1 ? "" : "s"} cited
+              {citations.length} source{citations.length === 1 ? "" : "s"} cited
             </span>
           </p>
           <p className="draft-event-text">{replyText}</p>
+          {citations.length > 0 && (
+            <ul className="citation-list">
+              {citations.map((citation, i) => (
+                <li key={i} className="citation-item">
+                  <p className="draft-event-meta">
+                    <strong>{citation.knowledge_doc_title}</strong>
+                  </p>
+                  <blockquote className="citation-excerpt">{citation.content}</blockquote>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       );
     }
