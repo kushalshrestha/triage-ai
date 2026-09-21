@@ -5,11 +5,13 @@ from collections.abc import Callable
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.database import get_db, get_session_factory
 from app.dependencies import STAFF_ROLES, get_current_user, require_role
 from app.models import KnowledgeDoc, KnowledgeDocStatus, User, UserRole
 from app.rag.ingestion import create_pending_knowledge_doc, process_knowledge_doc
 from app.rag.retrieval import retrieve_relevant_chunks
+from app.rate_limit import rate_limit
 from app.schemas import ChunkSearchResult, KnowledgeDocCreate, KnowledgeDocRead
 
 router = APIRouter(prefix="/knowledge", tags=["knowledge"])
@@ -37,6 +39,9 @@ def create_knowledge_doc(
     db: Session = Depends(get_db),
     session_factory: Callable[[], Session] = Depends(get_session_factory),
     _current_user: User = Depends(require_role(*STAFF_ROLES)),
+    _rate_limit: None = Depends(
+        rate_limit("knowledge-ingest", get_settings().knowledge_ingest_rate_limit_per_minute, 60)
+    ),
 ) -> KnowledgeDoc:
     doc = create_pending_knowledge_doc(db, title=payload.title, source=payload.source, content=payload.content)
     background_tasks.add_task(_process_in_background, session_factory, doc.id)
@@ -56,6 +61,9 @@ def search_knowledge(
     k: int = Query(default=3, ge=1, le=20),
     db: Session = Depends(get_db),
     _current_user: User = Depends(get_current_user),
+    _rate_limit: None = Depends(
+        rate_limit("knowledge-search", get_settings().knowledge_search_rate_limit_per_minute, 60)
+    ),
 ) -> list[ChunkSearchResult]:
     results = retrieve_relevant_chunks(db, query_text=q, k=k)
     return [

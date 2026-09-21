@@ -192,6 +192,17 @@ as placeholder text by the time you're presenting the project.
 - **Red-team set:** how adversarial examples are sourced and grown
   over time (`tests/evals/test_safety_eval.py`), and results of the
   latest run.
+- **Rate limiting (Phase 15, ADR-0018):** `app/rate_limit.py` — an
+  in-memory, per-user fixed-window limiter (no Redis; the `api`
+  service is a single process, confirmed via `docker-compose.yml`,
+  so per-process state is accurate here, not an approximation) on the
+  three endpoints that actually invoke a model:
+  `POST /tickets/{id}/triage` (5/min — the one that spends real Claude
+  money), `POST /knowledge` (20/min), `GET /knowledge/search` (30/min,
+  reachable by customers too). Verified against the running API: the
+  6th rapid triage request from one user returns 429 with
+  `Retry-After`; a second user in the same window is unaffected.
+  Closes threat-model item #4.
 
 ## Open questions
 Track unresolved design decisions here until they're settled, then
