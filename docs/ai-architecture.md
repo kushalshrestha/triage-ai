@@ -72,6 +72,21 @@ as placeholder text by the time you're presenting the project.
   MRR@3 from 0.917 to 0.852 on the real 89-doc corpus despite recall@3
   staying flat at 17/18. Off by default given the net result, same
   reasoning as hybrid search and contextual retrieval.
+- **Ingestion hardening (Phase 14, ADR-0017):** `POST /knowledge`
+  no longer blocks on the full chunk/embed pipeline — it creates the
+  `KnowledgeDoc` row (status `processing`) and returns immediately,
+  backgrounding the slow work via FastAPI `BackgroundTasks`. Chosen
+  over a fixed document-size cap (a client's legitimate document can
+  be arbitrarily large) and over standing up a real task queue
+  (Celery/arq — more infrastructure than this project's scale
+  justifies yet); the honest tradeoff is no durability/retry if the
+  process crashes mid-task, documented rather than glossed over. Every
+  test/eval across Phases 9-13 still calls `ingest_document()` directly
+  and synchronously — unchanged. New docs submitted through the API
+  also start `pending_review` and are invisible to
+  `retrieve_relevant_chunks()` until an admin approves them
+  (`POST /knowledge/{id}/approve`/`/reject`) — closes threat-model
+  item #8 (malicious/poisoned document injection).
 - **Faithfulness:** how eval measures whether a response is actually
   grounded in what was retrieved, vs. hallucinated.
 

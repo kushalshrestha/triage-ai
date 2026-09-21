@@ -2,7 +2,7 @@ import numpy as np
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
-from app.models import DocChunk
+from app.models import DocChunk, KnowledgeDoc, KnowledgeDocStatus
 from app.rag.embeddings import embed_texts
 from app.rag.rerank import rerank_candidates
 
@@ -43,6 +43,11 @@ def retrieve_relevant_chunks(
     similarity — never the RRF fusion score or the cross-encoder's own
     logit, both of which live on different scales entirely.
 
+    Only chunks whose parent `KnowledgeDoc` is `APPROVED` are eligible
+    (see ADR-0017) — a doc still `PROCESSING`/`PENDING_REVIEW` (not yet
+    reviewed) or `REJECTED`/`FAILED` is invisible here, even though
+    `GET /knowledge` (the staff-facing list) shows it unfiltered.
+
     Standalone building block for this phase (see ADR-0007) — does not
     persist to `retrievals`, which is scoped to an `agent_decision_id`
     that doesn't exist until phase 5's agent orchestration.
@@ -52,8 +57,10 @@ def retrieve_relevant_chunks(
 
     vector_rows = (
         db.query(DocChunk)
+        .join(KnowledgeDoc)
         .options(joinedload(DocChunk.knowledge_doc))
         .filter(DocChunk.embedding.isnot(None))
+        .filter(KnowledgeDoc.status == KnowledgeDocStatus.APPROVED)
         .order_by(distance)
         .limit(CANDIDATE_POOL)
         .all()
@@ -63,8 +70,10 @@ def retrieve_relevant_chunks(
     ts_query = func.plainto_tsquery("english", query_text)
     keyword_rows = (
         db.query(DocChunk)
+        .join(KnowledgeDoc)
         .options(joinedload(DocChunk.knowledge_doc))
         .filter(ts_vector.op("@@")(ts_query))
+        .filter(KnowledgeDoc.status == KnowledgeDocStatus.APPROVED)
         .order_by(func.ts_rank(ts_vector, ts_query).desc())
         .limit(CANDIDATE_POOL)
         .all()

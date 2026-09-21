@@ -3,6 +3,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from app.models import KnowledgeDocStatus
+
 
 class KnowledgeDocCreate(BaseModel):
     title: str = Field(min_length=1)
@@ -15,6 +17,7 @@ class KnowledgeDocRead(BaseModel):
     title: str
     source: str | None
     content: str
+    status: KnowledgeDocStatus
     created_at: datetime
 
     model_config = {"from_attributes": True}
