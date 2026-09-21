@@ -19,6 +19,13 @@ class Settings(BaseSettings):
     claude_model_name: str = "claude-haiku-4-5-20251001"
     draft_confidence_threshold: float = 0.5
     auto_respond_confidence_threshold: float = 0.8
+    # Rate limits on AI-facing endpoints, see ADR-0018. Triage is
+    # tightest since it can spend real Claude money; search is loosest
+    # since it's read-only and the cheapest model call (local
+    # embedding only).
+    triage_rate_limit_per_minute: int = 5
+    knowledge_ingest_rate_limit_per_minute: int = 20
+    knowledge_search_rate_limit_per_minute: int = 30
 
 
 @lru_cache
