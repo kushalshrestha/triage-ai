@@ -47,17 +47,18 @@ of "the evals actually caught something":
   run failed loudly with a Postgres error instead of writing bad data
   quietly.
 
-### Retrieval evals (Phases 9–12)
+### Retrieval evals (Phases 9–13)
 
 Retrieval outgrew a single table row once recall@k gained an MRR@k
 companion (Phase 9, ADR-0012) and a real-data corpus (Phase 11,
-ADR-0014) — three separate evals now, each answering a different
+ADR-0014) — several separate evals now, each answering a different
 question:
 
 | Eval | recall@3 | MRR@3 | Threshold (recall / MRR) | n | Corpus |
 |---|---|---|---|---|---|
 | Synthetic (`test_retrieval_eval.py`) | 1.00 | 1.00 | ≥ 0.75 / ≥ 0.6 | 12 | 9 hand-built docs, incl. deliberately adversarial cases |
 | Real (`test_retrieval_eval_real_corpus.py`) | 0.94 | 0.92 | ≥ 0.6 / ≥ 0.4 | 18 | 89 deduplicated real FAQ pairs (MakTek, Apache 2.0) |
+| Real, with cross-encoder re-ranking | 0.94 | **0.85** | ≥ 0.6 / ≥ 0.4 | 18 | same 89-doc corpus |
 | Contextual retrieval, no context (`test_contextual_retrieval_eval.py`) | 1.00 | 0.90 | ≥ 0.4 / ≥ 0.3 | 5 | 1 long multi-section doc, built for topic ambiguity |
 | Contextual retrieval, Ollama context | 1.00 | 0.90 | ≥ 0.4 / ≥ 0.3 | 5 | same doc |
 | Contextual retrieval, Claude context | 1.00 | 0.87 | ≥ 0.4 / ≥ 0.3 | 5 | same doc |
@@ -66,7 +67,7 @@ question:
 Retrieval itself is hybrid as of Phase 10 (`app/rag/retrieval.py`,
 ADR-0013) — vector search (pgvector cosine similarity) fused with
 Postgres full-text search via Reciprocal Rank Fusion, k=60. Reading
-these six rows honestly, not selectively:
+these seven rows honestly, not selectively:
 
 - **The synthetic corpus is maxed out** — a perfect score, including
   on cases hand-built to be hard (exact alphanumeric codes, a
@@ -99,14 +100,31 @@ these six rows honestly, not selectively:
   and contextualization itself stays off by default given no evidence
   any provider helps yet.
 
-The throughline across Phases 9–12: every one of these techniques
+- **Cross-encoder re-ranking (Phase 13, ADR-0016) is the one technique
+  aimed directly at a diagnosed failure, not a general technique
+  applied on spec — and it's the clearest case of "partial win, net
+  loss."** Re-ranking the real corpus's candidates recovered the
+  specific query diagnosed above (from missing the top-3 entirely to
+  rank 3), exactly the mechanism working as intended. But it also
+  regressed two other, previously-correct queries — one from rank 1 to
+  a complete miss ("My package says delivered but I never got it"),
+  one from rank 1 to rank 2 — netting MRR@3 from 0.917 down to 0.852
+  while recall@3 stayed flat (a different query fails either way).
+  `cross-encoder/ms-marco-MiniLM-L6-v2` is trained on general
+  web-search relevance, not this project's narrow FAQ domain, and
+  confidently preferred wrong answers in both regressions. Off by
+  default given the net result.
+
+The throughline across Phases 9–13: every one of these techniques
 (recall@k+MRR@k measurement, hybrid search, real-data corpus,
-contextual retrieval) was implemented correctly and *measured*, and
-three of the four honestly show no proven benefit yet on this
-project's data. That's reported as-is rather than reframed — the
-value was in building the measurement infrastructure and using it
-honestly, including on the comparisons this project's own author
-expected to win and didn't.
+contextual retrieval, cross-encoder re-ranking) was implemented
+correctly and *measured*, and four of the five honestly show no net
+proven benefit yet on this project's data — including the one
+(re-ranking) that was specifically targeted at a real diagnosed
+problem and still netted worse on aggregate. That's reported as-is
+rather than reframed — the value was in building the measurement
+infrastructure and using it honestly, including on the comparisons
+this project's own author expected to win and didn't.
 
 ## Safety / red-team results
 

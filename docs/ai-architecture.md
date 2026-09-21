@@ -6,6 +6,18 @@ section in as the corresponding build phase lands; don't leave this
 as placeholder text by the time you're presenting the project.
 
 ## RAG design
+- **Retrieval evolution, at a glance (full story in ADR-0016):**
+  pure vector search (ADR-0007) → hybrid search added, no proven
+  benefit (ADR-0013) → contextual retrieval added, no proven benefit,
+  Claude dropped as a cost with nothing to show for it (ADR-0015) →
+  cross-encoder re-ranking added, targeted directly at a real
+  diagnosed failure (ADR-0014), partially fixed it but introduced two
+  new regressions and a net-worse MRR (ADR-0016). Three different,
+  individually well-reasoned techniques, all correctly implemented and
+  rigorously measured, none showing a net win on this project's actual
+  data — the measurement infrastructure (ADR-0012) proving that
+  honestly, including when the result isn't the one hoped for, is the
+  actual point of this phase sequence.
 - **Chunking strategy:** fixed-size character windows, 800 characters
   with 100-character overlap (`app/rag/chunking.py`). No tokenizer
   dependency, fully deterministic. See ADR-0007 for why, and for the
@@ -48,6 +60,18 @@ as placeholder text by the time you're presenting the project.
   `app/agent/orchestrator.py`'s routing thresholds depend on that. k=3
   is still the starting value; `tests/evals/test_retrieval_eval.py` is
   the mechanism for tuning it with actual numbers later.
+- **Cross-encoder re-ranking (Phase 13, ADR-0016):** opt-in, off by
+  default — `retrieve_relevant_chunks(..., use_reranking=True)`
+  re-orders the RRF candidate pool with `cross-encoder/ms-marco-MiniLM-L6-v2`
+  (`app/rag/rerank.py`) before taking the final top-k. Unlike hybrid
+  search and contextual retrieval, this was aimed directly at a
+  specific diagnosed failure (ADR-0014's crowded-out "return policy"
+  query), not a general technique applied on spec — and it partially
+  worked: that exact query recovered from a miss to rank 3. But two
+  other queries regressed (one from rank 1 to a complete miss), netting
+  MRR@3 from 0.917 to 0.852 on the real 89-doc corpus despite recall@3
+  staying flat at 17/18. Off by default given the net result, same
+  reasoning as hybrid search and contextual retrieval.
 - **Faithfulness:** how eval measures whether a response is actually
   grounded in what was retrieved, vs. hallucinated.
 
