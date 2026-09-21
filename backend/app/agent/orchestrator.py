@@ -122,8 +122,15 @@ def run_triage(db: Session, ticket: Ticket) -> AgentDecision:
             decision_type = DecisionType.ESCALATE
 
         if draft is not None:
+            # Checked against only the chunks the draft actually cites,
+            # not the whole retrieved pool — see ADR-0019. Otherwise a
+            # reply could cite chunk 0 while really drawing on chunk 2,
+            # and still look "grounded" because *something* in the pool
+            # happens to support it. generate_draft() guarantees
+            # cited_chunk_indices is non-empty whenever context_texts is.
+            cited_texts = [context_texts[i] for i in draft.cited_chunk_indices]
             groundedness_passed, groundedness_raw = assess_groundedness(
-                draft.reply_text, context_texts
+                draft.reply_text, cited_texts
             )
             if not groundedness_passed and decision_type == DecisionType.AUTO_RESPOND:
                 decision_type = DecisionType.DRAFT_FOR_REVIEW
@@ -152,6 +159,12 @@ def run_triage(db: Session, ticket: Ticket) -> AgentDecision:
     db.add(decision)
     db.flush()
 
+    # `rank` (1-based here) maps back to `draft.cited_chunk_indices`
+    # (0-based) because both are derived from this same `retrieved`
+    # list, in this same order, within this one function call — that
+    # invariant is what makes `rank - 1 in draft.cited_chunk_indices`
+    # correct. Don't reorder or re-fetch `retrieved` between here and
+    # where `context_texts` was built above without preserving it.
     for rank, (chunk, score) in enumerate(retrieved, start=1):
         db.add(
             Retrieval(
@@ -159,6 +172,7 @@ def run_triage(db: Session, ticket: Ticket) -> AgentDecision:
                 doc_chunk_id=chunk.id,
                 similarity_score=_clamp_similarity(score),
                 rank=rank,
+                cited=draft is not None and (rank - 1) in draft.cited_chunk_indices,
             )
         )
 
@@ -202,6 +216,13 @@ def run_triage(db: Session, ticket: Ticket) -> AgentDecision:
         )
 
     if draft is not None and schema_valid:
+        citations = [
+            {
+                "knowledge_doc_title": retrieved[i][0].knowledge_doc.title,
+                "content": retrieved[i][0].content,
+            }
+            for i in draft.cited_chunk_indices
+        ]
         db.add(
             TicketEvent(
                 ticket_id=ticket.id,
@@ -209,6 +230,7 @@ def run_triage(db: Session, ticket: Ticket) -> AgentDecision:
                 payload={
                     "reply_text": draft.reply_text,
                     "cited_chunk_indices": draft.cited_chunk_indices,
+                    "citations": citations,
                     "decision_type": decision_type.value,
                     "grounded": groundedness_passed,
                 },
