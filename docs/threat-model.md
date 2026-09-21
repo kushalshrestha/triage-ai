@@ -27,7 +27,7 @@ trust boundary is added (a new external API, a new ingestion source).
 | 5 | Information disclosure | Secrets (API keys, DB credentials) committed to git | `.env` gitignored, `detect-secrets` pre-commit hook, CI secret scanning is out of scope for a public dependency scanner but the pre-commit hook catches local commits | Implemented |
 | 6 | Tampering | Vulnerable dependency introduces an exploitable bug | `pip-audit` in CI on every PR | Implemented |
 | 7 | Repudiation | No record of which model/version produced a given response, making incidents hard to investigate | `agent_decisions.model_used`, prompt/model versioning in eval_runs | Implemented — every decision from `app/agent/orchestrator.py` records `model_used` (comma-separated when multiple models contributed, see ADR-0008); `eval_runs` prompt versioning still open |
-| 8 | Spoofing | Malicious document injected into the knowledge base during ingestion, poisoning retrieval | Ingestion source allowlist / review step before a doc enters `knowledge_docs` | Open question — not yet designed, add to ai-architecture.md open questions |
+| 8 | Spoofing | Malicious document injected into the knowledge base during ingestion, poisoning retrieval | Admin approve/reject workflow — a staff-submitted doc (`POST /knowledge`) starts `pending_review` and is invisible to `retrieve_relevant_chunks()` until an admin approves it (`app/routers/knowledge.py`, `require_role(UserRole.ADMIN.value)`) | Implemented — see ADR-0017 |
 
 ## Out of scope for this project
 Network-level threats (DDoS, TLS termination) are handled by whatever
