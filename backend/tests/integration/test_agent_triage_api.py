@@ -13,7 +13,17 @@ from sqlalchemy.orm import Session
 
 from app.agent import orchestrator
 from app.agent.drafting import ClaudeUsage, DraftOutput, DraftSchemaError
-from app.models import AgentDecision, GuardrailCheck, Retrieval, Ticket, TicketStatus, User, UserRole
+from app.models import (
+    AgentDecision,
+    GuardrailCheck,
+    Retrieval,
+    Ticket,
+    TicketEvent,
+    TicketEventType,
+    TicketStatus,
+    User,
+    UserRole,
+)
 from app.rag.ingestion import ingest_document
 from app.security import create_access_token, hash_password
 
@@ -21,6 +31,11 @@ PASSWORD_RESET_DOC = (
     "To reset your password, go to the login page and click 'Forgot password'. "
     "Enter your account email and we'll send a reset link that expires after "
     "one hour."
+)
+
+BILLING_REFUND_DOC = (
+    "Refunds for subscription charges are processed within 5-7 business days "
+    "back to the original payment method."
 )
 
 
@@ -69,6 +84,10 @@ def test_good_kb_match_drafts_a_reply(client: TestClient, db_session: Session, m
 
     staff_token = _make_staff_user(db_session, "triage-agent@example.com")
     ingest_document(db_session, title="Password Reset FAQ", source="faq", content=PASSWORD_RESET_DOC)
+    # A second, unrelated doc in the pool — lets the citation assertions
+    # below actually distinguish "cited" from "merely retrieved" (see
+    # ADR-0019); with only one doc, cited/uncited would be indistinguishable.
+    ingest_document(db_session, title="Billing Refund FAQ", source="faq", content=BILLING_REFUND_DOC)
 
     customer_token = _register_customer(client, "needs-password-help@example.com")
     ticket = _create_ticket(
@@ -83,10 +102,19 @@ def test_good_kb_match_drafts_a_reply(client: TestClient, db_session: Session, m
     assert "claude" in body["model_used"]
     mock_draft.assert_called_once()
     mock_groundedness.assert_called_once()
+    # Grounded against only the cited chunk (index 0), not the whole
+    # retrieved pool — the point of ADR-0019.
+    assert mock_groundedness.call_args.args[1] == [PASSWORD_RESET_DOC]
 
     decision = db_session.get(AgentDecision, body["id"])
     retrievals = db_session.query(Retrieval).filter_by(agent_decision_id=decision.id).all()
     assert len(retrievals) >= 1
+
+    cited_retrievals = [r for r in retrievals if r.cited]
+    uncited_retrievals = [r for r in retrievals if not r.cited]
+    assert len(cited_retrievals) == 1
+    assert cited_retrievals[0].doc_chunk.content == PASSWORD_RESET_DOC
+    assert all(r.doc_chunk.content != PASSWORD_RESET_DOC for r in uncited_retrievals)
 
     checks = db_session.query(GuardrailCheck).filter_by(agent_decision_id=decision.id).all()
     check_types = {c.check_type.value: c.passed for c in checks}
@@ -96,6 +124,15 @@ def test_good_kb_match_drafts_a_reply(client: TestClient, db_session: Session, m
     assert decision.total_latency_ms is not None and decision.total_latency_ms >= 0
     assert decision.claude_input_tokens == 120
     assert decision.claude_output_tokens == 40
+
+    draft_event = (
+        db_session.query(TicketEvent)
+        .filter_by(ticket_id=ticket["id"], event_type=TicketEventType.DRAFT_GENERATED)
+        .one()
+    )
+    assert draft_event.payload["citations"] == [
+        {"knowledge_doc_title": "Password Reset FAQ", "content": PASSWORD_RESET_DOC}
+    ]
 
     ticket_row = db_session.get(Ticket, ticket["id"])
     assert ticket_row.status in (TicketStatus.PENDING, TicketStatus.RESOLVED)
