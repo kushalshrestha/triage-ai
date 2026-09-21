@@ -1,95 +1,102 @@
-"""A first, small sanity-check on the groundedness judge (see ADR-0009)
-— project-brief.md's review notes flag that an LLM judge needs its own
-reliability check before being trusted. This is two hand-crafted
-examples, not the full "run twice on 10 examples, check stability"
-study that note calls for (tracked as an open question in
-ai-architecture.md). Real Ollama call.
+"""Groundedness judge reliability study (ADR-0020).
+
+project-brief.md's review notes flagged early on that an LLM judge
+needs its own reliability check — "run it twice on ~10 examples,
+confirm stable scores" — before being trusted for regression gating.
+This went from a hypothetical open question to a real, reproduced
+finding during Phase 16 (ADR-0019): a single hand-picked eval example
+passed 5/5 locally (arm64) but failed once in CI (x86_64) at
+temperature 0, and a follow-up attempt at a "starker" example turned
+out to be consistently wrong in a different way — the judge doesn't
+reliably penalize a reply checked against totally irrelevant context,
+only apparent contradiction. Both failure modes are now golden-set
+categories (`irrelevant_context`, `adjacent_wrong_topic`) instead of
+one-off examples, and this file measures across all of them with
+aggregate scoring, not individual hard asserts — the convention every
+other eval in this project already follows (testing-strategy.md layer
+3), which the old version of this file didn't.
 """
+import json
+from pathlib import Path
+
 from app.agent.judge import PROMPT_VERSION, assess_groundedness
 from app.config import get_settings
 from app.models import EvalRunType
 
-CONTEXT = [
-    "To reset your password, go to the login page and click 'Forgot "
-    "password'. Enter your account email and we'll send a reset link "
-    "that expires after one hour."
-]
+GOLDEN_SET_PATH = Path(__file__).parent / "groundedness_golden_set.jsonl"
+RUNS_PER_EXAMPLE = 2  # project-brief.md's literal ask: "run it twice"
 
-GROUNDED_REPLY = (
-    "You can reset your password by clicking 'Forgot password' on the "
-    "login page and entering your account email. The reset link will "
-    "expire after one hour."
-)
-
-HALLUCINATED_REPLY = (
-    "You can reset your password by calling our 24/7 phone support line "
-    "at 1-800-555-0100 and a representative will reset it for you "
-    "immediately over the phone."
-)
-
-# Demonstrates why ADR-0019 checks groundedness against only the chunks
-# a draft actually cites, not the whole retrieved pool: REFUND_CHUNK and
-# CANCELLATION_CHUNK are on different topics; CANCELLATION_REPLY is
-# genuinely grounded in CANCELLATION_CHUNK, but if a draft mis-cited
-# REFUND_CHUNK instead, checking against the whole pool would still pass
-# it (CANCELLATION_CHUNK is right there supporting it) — masking the bad
-# citation entirely.
-REFUND_CHUNK = (
-    "Refunds for subscription charges are processed within 5-7 business "
-    "days back to the original payment method."
-)
-CANCELLATION_CHUNK = (
-    "To cancel your subscription, go to Billing > Subscription and click "
-    "'Cancel Plan'. Cancellation takes effect at the end of the current "
-    "billing period."
-)
-CANCELLATION_REPLY = (
-    "To cancel your subscription, go to Billing > Subscription and click "
-    "'Cancel Plan'; it will take effect at the end of your current "
-    "billing period."
-)
+# Thresholds set from real measurement (ADR-0020), not guessed in
+# advance — same convention as every other eval in this project.
+# Measured for the current prompt (v1): consistency_rate=1.0 (perfect
+# same-environment stability at temperature 0 — this metric can't
+# detect the *cross-architecture* nondeterminism found via the real
+# CI incident that motivated this file, only same-run repeatability),
+# reliable_accuracy=0.636 (7/11) — the best of four prompt variants
+# tried (see ADR-0020's Alternatives; three rewrites all measured
+# worse: 0.45, 0.45, 0.55). That's a real, honestly-reported capability
+# ceiling for this local 1B model on this task, not a prompt-wording
+# bug — kept as PROMPT_VERSION "v1", unchanged. Thresholds below give
+# headroom for one example flipping (a known, documented risk) without
+# being toothless against a real regression.
+CONSISTENCY_THRESHOLD = 0.8
+RELIABLE_ACCURACY_THRESHOLD = 0.5
 
 
-def _record(record_eval_run, name: str, passed: bool) -> None:
+def _load_golden_set() -> list[dict]:
+    with GOLDEN_SET_PATH.open() as f:
+        return [json.loads(line) for line in f if line.strip()]
+
+
+def test_groundedness_judge_reliability(record_eval_run):
+    examples = _load_golden_set()
+    per_example = []
+
+    for example in examples:
+        verdicts = [
+            assess_groundedness(example["reply"], example["context"])[0]
+            for _ in range(RUNS_PER_EXAMPLE)
+        ]
+        consistent = len(set(verdicts)) == 1
+        # Disagreement always counts against reliability — an
+        # inconsistent verdict on a case that matters isn't "half
+        # credit," it's exactly the thing this study exists to catch.
+        correct = consistent and verdicts[0] == example["expected_grounded"]
+        per_example.append(
+            {
+                "category": example["category"],
+                "verdicts": verdicts,
+                "consistent": consistent,
+                "correct": correct,
+            }
+        )
+
+    consistency_rate = sum(e["consistent"] for e in per_example) / len(per_example)
+    reliable_accuracy = sum(e["correct"] for e in per_example) / len(per_example)
+
+    model_used = f"ollama/{get_settings().ollama_model_name}"
     record_eval_run(
         run_type=EvalRunType.FAITHFULNESS,
         prompt_version=PROMPT_VERSION,
-        model_used=f"ollama/{get_settings().ollama_model_name}",
-        score=1.0 if passed else 0.0,
-        threshold=1.0,
-        passed=passed,
-        details={"example": name},
+        model_used=model_used,
+        score=consistency_rate,
+        threshold=CONSISTENCY_THRESHOLD,
+        passed=consistency_rate >= CONSISTENCY_THRESHOLD,
+        details={"metric": "consistency_rate", "runs_per_example": RUNS_PER_EXAMPLE, "examples": per_example},
+    )
+    record_eval_run(
+        run_type=EvalRunType.FAITHFULNESS,
+        prompt_version=PROMPT_VERSION,
+        model_used=model_used,
+        score=reliable_accuracy,
+        threshold=RELIABLE_ACCURACY_THRESHOLD,
+        passed=reliable_accuracy >= RELIABLE_ACCURACY_THRESHOLD,
+        details={"metric": "reliable_accuracy", "runs_per_example": RUNS_PER_EXAMPLE, "examples": per_example},
     )
 
-
-def test_grounded_reply_passes(record_eval_run):
-    grounded, _raw = assess_groundedness(GROUNDED_REPLY, CONTEXT)
-    _record(record_eval_run, "grounded_reply", grounded is True)
-    assert grounded is True
-
-
-def test_hallucinated_reply_fails(record_eval_run):
-    grounded, _raw = assess_groundedness(HALLUCINATED_REPLY, CONTEXT)
-    _record(record_eval_run, "hallucinated_reply", grounded is False)
-    assert grounded is False
-
-
-def test_reply_grounded_against_full_pool_when_correct_chunk_present(record_eval_run):
-    """Baseline: today's pre-ADR-0019 behavior — checking against the
-    whole retrieved pool passes when a supporting chunk is anywhere in
-    it, regardless of which chunk was actually cited.
-    """
-    grounded, _raw = assess_groundedness(CANCELLATION_REPLY, [REFUND_CHUNK, CANCELLATION_CHUNK])
-    _record(record_eval_run, "full_pool_with_supporting_chunk_present", grounded is True)
-    assert grounded is True
-
-
-def test_reply_fails_when_checked_against_a_misleading_citation(record_eval_run):
-    """ADR-0019: the same reply, checked against only a (deliberately
-    wrong) cited chunk, correctly fails — proving citation-scoped
-    checking catches a "right answer, misleading citation" case that
-    whole-pool checking (test above) would silently pass.
-    """
-    grounded, _raw = assess_groundedness(CANCELLATION_REPLY, [REFUND_CHUNK])
-    _record(record_eval_run, "cited_chunk_only_misleading_citation", grounded is False)
-    assert grounded is False
+    assert consistency_rate >= CONSISTENCY_THRESHOLD, (
+        f"consistency_rate was {consistency_rate:.2f}, expected >= {CONSISTENCY_THRESHOLD}"
+    )
+    assert reliable_accuracy >= RELIABLE_ACCURACY_THRESHOLD, (
+        f"reliable_accuracy was {reliable_accuracy:.2f}, expected >= {RELIABLE_ACCURACY_THRESHOLD}"
+    )

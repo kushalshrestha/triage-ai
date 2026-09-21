@@ -196,6 +196,23 @@ as placeholder text by the time you're presenting the project.
   isn't) blocking on every PR; `eval-full` runs everything, including
   the real Claude-calling triage eval, nightly + on manual dispatch
   only, to keep CI's Claude spend bounded.
+- **Groundedness judge reliability (Phase 17, ADR-0020):** resolved,
+  not just flagged — `tests/evals/groundedness_golden_set.jsonl` (11
+  examples) measures the judge (`app/agent/judge.py`, local
+  `llama3.2:1b`) twice per example. Real numbers: `consistency_rate`
+  (same-environment repeatability) = **1.0**; `reliable_accuracy`
+  (both calls agree and match the expected label) = **0.636**. The
+  judge reliably catches blatant fabrication but is weak on subtler
+  wrong-but-plausible citations (a changed number, a partially
+  invented add-on, an unrelated or adjacent-topic chunk). Three
+  rewritten prompts were measured against the same golden set (0.45,
+  0.45, 0.55) — all worse than the current one — pointing to a
+  capability ceiling of this small model on this task rather than a
+  fixable prompt. Kept as-is (`PROMPT_VERSION` unchanged). This was
+  triggered by a real CI failure (a Phase 16 eval case passed 5/5
+  locally on arm64 but failed once on CI's x86_64 runner at
+  `temperature: 0`) — cross-architecture nondeterminism in quantized
+  model inference, not a code bug.
 
 ## Guardrails and safety
 - **Input side:** injection detection (`app/guardrails/injection.py`)
@@ -227,12 +244,6 @@ as placeholder text by the time you're presenting the project.
 ## Open questions
 Track unresolved design decisions here until they're settled, then
 move the resolution into an ADR.
-- **Judge reliability:** `tests/evals/test_groundedness_eval.py` checks
-  the groundedness judge on two hand-crafted examples (one clearly
-  grounded, one clearly hallucinated) — not the full "run the judge
-  twice on ~10 examples, confirm stable scores" study
-  `project-brief.md`'s review notes call for before trusting a judge
-  for regression gating. Still open.
 - **Tracing / cost dashboard:** `project-brief.md`'s tech stack names
   Langfuse (or similar) for per-call tracing; `scripts/cost_report.py`
   (ADR-0010) is a deliberately minimal stand-in — a report generator
