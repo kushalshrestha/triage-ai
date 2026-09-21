@@ -18,3 +18,4 @@ not as an afterthought.
 | 14 | Knowledge Ingestion | Ingestion hardening — background chunk/embed via `BackgroundTasks`, no size cap (see ADR-0017); admin approve/reject workflow closing threat-model item #8 | Done |
 | 15 | Guardrails | Rate limiting on AI-facing endpoints — in-memory per-user fixed-window limiter, no new infra (see ADR-0018); closes threat-model item #4 | Done |
 | 16 | Grounded Retrieval | Citation-scoped groundedness verification — checks drafts against only the chunks they actually cite, not the whole retrieved pool; persists `Retrieval.cited`; surfaces real citations to reviewers (see ADR-0019) | Done |
+| 17 | Evaluation Framework | Groundedness judge reliability study — real golden set (11 examples), measured consistency (1.0) and accuracy (0.636) for the current prompt; three rewrites tried and measured worse, kept as-is (see ADR-0020) | Done |

@@ -9,26 +9,28 @@ unit/integration/eval split this all sits on top of.
 
 ## Eval results
 
-Full `pytest tests/evals` run (free + costly), latest on 2026-09-20.
+Full `pytest tests/evals` run (free + costly), latest on 2026-09-21.
 The retrieval eval has grown well beyond a single row since the
 initial version of this table — it's now three separate evals
 (synthetic corpus, real corpus, contextual retrieval comparison),
-covered in its own subsection below. Classification and groundedness
-remain small and synthetic; project-brief.md's review notes on
-sourcing real examples are resolved for retrieval (see Known
-limitations) but still open for those two.
+covered in its own subsection below. Groundedness also outgrew a
+single row as of Phase 17 (ADR-0020) — see its own subsection.
+Classification remains small and synthetic; project-brief.md's review
+notes on sourcing real examples are resolved for retrieval (see Known
+limitations) but still open there.
 
 | Eval | Score | Threshold | n | Model(s) | Prompt version |
 |---|---|---|---|---|---|
 | Classification accuracy | 1.00 | ≥ 0.90 | 5 | `ollama/llama3.2:1b` | v1 |
-| Groundedness (faithfulness) | 1.00 | ≥ 1.00 | 2 (1 grounded example, 1 hallucinated example) | `ollama/llama3.2:1b` | v1 |
+| Groundedness judge reliability | 0.636 | ≥ 0.5 | 11 (real golden set, ADR-0020) | `ollama/llama3.2:1b` | v1 |
 | Triage routing accuracy | 1.00 | ≥ 0.66 | 3 | `ollama/llama3.2:1b` + `claude-haiku-4-5-20251001` | n/a (routes on retrieval similarity, not a model call — see ADR-0008) |
 
-Classification, groundedness, and triage routing are still a
-consistent 1.00 — not surprising yet, since these are small,
-deliberately clear-cut golden sets (this is exactly the "sanity-check
-the eval, don't just trust it" caution `project-brief.md`'s review
-notes raise). The real value of `eval_runs` existing is what happens
+Classification and triage routing are still a consistent 1.00 — not
+surprising yet, since these are small, deliberately clear-cut golden
+sets (this is exactly the "sanity-check the eval, don't just trust it"
+caution `project-brief.md`'s review notes raise). Groundedness is the
+one that actually got that sanity-check, and it's genuinely imperfect
+— see below. The real value of `eval_runs` existing is what happens
 *after* a prompt changes: `ADR-0010` set the current hardcoded
 thresholds as the de facto regression baseline — a future prompt edit
 that drops classification below 0.90, say, fails its test and blocks
@@ -68,6 +70,36 @@ against the running API: in one real triage call, the rank-1
 actually cited — it cited rank-2 (0.79) instead — confirming the new
 `retrievals.cited` column captures a genuinely distinct signal from
 similarity/rank, not a redundant derivative of it.
+
+### Groundedness judge reliability (Phase 17, ADR-0020)
+
+Triggered by a real CI failure, not planned in advance: a Phase 16
+eval case passed 5/5 locally (arm64) but failed once in CI (x86_64) at
+`temperature: 0` — cross-architecture nondeterminism in quantized
+model inference, not a code bug. Investigating it properly (rather
+than just re-running CI) turned project-brief.md's long-flagged "run
+the judge twice on ~10 examples" open question into a real
+measurement: a new 11-example golden set
+(`tests/evals/groundedness_golden_set.jsonl`), each checked twice.
+
+| Metric | Score | Threshold |
+|---|---|---|
+| `consistency_rate` (same-environment repeatability) | **1.00** | ≥ 0.8 |
+| `reliable_accuracy` (both calls agree *and* correct) | **0.636** (7/11) | ≥ 0.5 |
+
+Perfect same-environment consistency confirms the CI failure really
+was cross-architecture, not general flakiness. The accuracy number is
+the honest finding: the judge reliably catches only blatant
+fabrication — it missed every case where the reply was topically
+plausible but a specific detail was wrong, invented, or the context
+didn't actually address it (`changed_specific_fact`,
+`partial_hallucination`, `irrelevant_context`,
+`wrong_question_answered`). Three rewritten prompts were measured
+against the same golden set before touching production code — 0.45,
+0.45, 0.55, all worse than the current 0.636 — pointing to a real
+capability ceiling of this local 1B model on this task, not a
+fixable prompt. Kept as-is; documented plainly rather than either
+hidden or over-corrected.
 
 ### Retrieval evals (Phases 9–13)
 
@@ -225,10 +257,14 @@ comparison once there is some, not the final comparison itself.
 
 Carried over honestly from `ai-architecture.md`'s Open Questions —
 not fixed by writing this report:
-- **Judge reliability**: the groundedness judge has been sanity-checked
-  on 2 hand-crafted examples, not the "run it twice on ~10 examples,
-  confirm stable scores" study `project-brief.md`'s review notes call
-  for before trusting a judge for regression gating.
+- **Judge reliability**: resolved via a real study (Phase 17,
+  ADR-0020) — but the resolution itself surfaced a real, ongoing
+  limitation rather than erasing one: `reliable_accuracy` is only
+  0.636, a measured capability ceiling of the local 1B judge on
+  subtler wrong-but-plausible citations, not something three attempted
+  prompt rewrites could fix. Worth keeping in mind whenever citing this
+  project's guardrail coverage — the judge reliably catches blatant
+  fabrication, not subtle mismatches.
 - **Tracing / cost dashboard**: this report is a point-in-time script
   run on demand, not live per-call tracing (Langfuse or similar,
   per `project-brief.md`'s tech stack) — a bigger infra lift not yet
@@ -244,6 +280,7 @@ not fixed by writing this report:
   synthetic one, finally producing non-perfect, real-headroom numbers
   (recall@3 = 0.94, MRR@3 = 0.92, vs. a perfect 1.0/1.0 on the
   synthetic corpus). Classification accuracy's `golden_set.jsonl` and
-  the groundedness eval's two hand-crafted examples remain synthetic —
-  this was project-brief.md's stated intent for golden-set sourcing in
-  general, and only the retrieval slice of it is done.
+  the groundedness eval's 11-example `groundedness_golden_set.jsonl`
+  remain hand-crafted/synthetic — this was project-brief.md's stated
+  intent for golden-set sourcing in general, and only the retrieval
+  slice of it is done.
