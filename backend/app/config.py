@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 60
     cors_allowed_origins: list[str] = ["http://localhost:5173"]
     embedding_model_name: str = "all-MiniLM-L6-v2"
+    reranker_model_name: str = "cross-encoder/ms-marco-MiniLM-L6-v2"
     ollama_model_name: str = "llama3.2:1b"
     claude_model_name: str = "claude-haiku-4-5-20251001"
     draft_confidence_threshold: float = 0.5

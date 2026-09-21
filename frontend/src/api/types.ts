@@ -58,11 +58,14 @@ export interface AgentDecisionRead {
   created_at: string;
 }
 
+export type KnowledgeDocStatus = "processing" | "pending_review" | "approved" | "rejected" | "failed";
+
 export interface KnowledgeDocRead {
   id: string;
   title: string;
   source: string | null;
   content: string;
+  status: KnowledgeDocStatus;
   created_at: string;
 }
 

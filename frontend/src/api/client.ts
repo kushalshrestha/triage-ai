@@ -122,6 +122,14 @@ export function deleteKnowledgeDoc(docId: string): Promise<void> {
   return request<void>(`/knowledge/${docId}`, { method: "DELETE" });
 }
 
+export function approveKnowledgeDoc(docId: string): Promise<KnowledgeDocRead> {
+  return request<KnowledgeDocRead>(`/knowledge/${docId}/approve`, { method: "POST" });
+}
+
+export function rejectKnowledgeDoc(docId: string): Promise<KnowledgeDocRead> {
+  return request<KnowledgeDocRead>(`/knowledge/${docId}/reject`, { method: "POST" });
+}
+
 export function searchKnowledge(q: string, k = 5): Promise<ChunkSearchResult[]> {
   return request<ChunkSearchResult[]>(`/knowledge/search?${new URLSearchParams({ q, k: String(k) })}`);
 }

@@ -2,8 +2,9 @@ import numpy as np
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
-from app.models import DocChunk
+from app.models import DocChunk, KnowledgeDoc, KnowledgeDocStatus
 from app.rag.embeddings import embed_texts
+from app.rag.rerank import rerank_candidates
 
 # Candidate pool fetched from each side before fusion — wider than the
 # final k so RRF has real material to reorder. RRF_K=60 is the standard
@@ -24,20 +25,28 @@ def _cosine_similarity(query_embedding: list[float], chunk_embedding: list[float
 
 
 def retrieve_relevant_chunks(
-    db: Session, query_text: str, k: int = 3
+    db: Session, query_text: str, k: int = 3, use_reranking: bool = False
 ) -> list[tuple[DocChunk, float]]:
     """Top-k chunks for query_text via hybrid search: vector similarity
     (pgvector cosine distance) and Postgres full-text search, fused with
-    Reciprocal Rank Fusion (see ADR-0013).
+    Reciprocal Rank Fusion (see ADR-0013), optionally followed by
+    cross-encoder re-ranking (`use_reranking`, opt-in — see ADR-0016)
+    over the RRF-ranked candidate pool.
 
     The returned float is always the chunk's real cosine similarity to
-    the query, in [0, 1] — RRF only decides which chunks are selected
-    and in what order, never what the "score" means downstream.
-    app/agent/orchestrator.py feeds this value directly into its routing
-    thresholds (ADR-0008), and it's written to `retrievals.similarity_score`
-    / `agent_decisions.confidence_score`, both `CHECK (0<=x<=1)` columns
-    calibrated against real cosine similarity — never the RRF fusion
-    score, which lives on a different, much smaller scale.
+    the query, in [0, 1] — neither RRF nor re-ranking ever changes what
+    the "score" means, only which chunks are selected and in what
+    order. app/agent/orchestrator.py feeds this value directly into its
+    routing thresholds (ADR-0008), and it's written to
+    `retrievals.similarity_score` / `agent_decisions.confidence_score`,
+    both `CHECK (0<=x<=1)` columns calibrated against real cosine
+    similarity — never the RRF fusion score or the cross-encoder's own
+    logit, both of which live on different scales entirely.
+
+    Only chunks whose parent `KnowledgeDoc` is `APPROVED` are eligible
+    (see ADR-0017) — a doc still `PROCESSING`/`PENDING_REVIEW` (not yet
+    reviewed) or `REJECTED`/`FAILED` is invisible here, even though
+    `GET /knowledge` (the staff-facing list) shows it unfiltered.
 
     Standalone building block for this phase (see ADR-0007) — does not
     persist to `retrievals`, which is scoped to an `agent_decision_id`
@@ -48,8 +57,10 @@ def retrieve_relevant_chunks(
 
     vector_rows = (
         db.query(DocChunk)
+        .join(KnowledgeDoc)
         .options(joinedload(DocChunk.knowledge_doc))
         .filter(DocChunk.embedding.isnot(None))
+        .filter(KnowledgeDoc.status == KnowledgeDocStatus.APPROVED)
         .order_by(distance)
         .limit(CANDIDATE_POOL)
         .all()
@@ -59,8 +70,10 @@ def retrieve_relevant_chunks(
     ts_query = func.plainto_tsquery("english", query_text)
     keyword_rows = (
         db.query(DocChunk)
+        .join(KnowledgeDoc)
         .options(joinedload(DocChunk.knowledge_doc))
         .filter(ts_vector.op("@@")(ts_query))
+        .filter(KnowledgeDoc.status == KnowledgeDocStatus.APPROVED)
         .order_by(func.ts_rank(ts_vector, ts_query).desc())
         .limit(CANDIDATE_POOL)
         .all()
@@ -75,11 +88,17 @@ def retrieve_relevant_chunks(
         rrf_scores[chunk.id] = rrf_scores.get(chunk.id, 0.0) + 1.0 / (RRF_K + rank)
         chunks_by_id[chunk.id] = chunk
 
-    ranked_ids = sorted(rrf_scores, key=lambda cid: rrf_scores[cid], reverse=True)[:k]
-    return [
+    pool_size = CANDIDATE_POOL if use_reranking else k
+    ranked_ids = sorted(rrf_scores, key=lambda cid: rrf_scores[cid], reverse=True)[:pool_size]
+    results = [
         (
             chunks_by_id[cid],
             _cosine_similarity(query_embedding, chunks_by_id[cid].embedding),
         )
         for cid in ranked_ids
     ]
+
+    if use_reranking:
+        results = rerank_candidates(query_text, results)
+
+    return results[:k]

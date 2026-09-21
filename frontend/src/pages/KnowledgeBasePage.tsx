@@ -1,13 +1,29 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, Navigate } from "react-router-dom";
 
-import { createKnowledgeDoc, deleteKnowledgeDoc, listKnowledgeDocs, searchKnowledge } from "../api/client";
+import {
+  approveKnowledgeDoc,
+  createKnowledgeDoc,
+  deleteKnowledgeDoc,
+  listKnowledgeDocs,
+  rejectKnowledgeDoc,
+  searchKnowledge,
+} from "../api/client";
 import type { ChunkSearchResult, KnowledgeDocRead } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
+
+const STATUS_LABELS: Record<string, string> = {
+  processing: "Processing…",
+  pending_review: "Pending review",
+  approved: "Approved",
+  rejected: "Rejected",
+  failed: "Failed",
+};
 
 export function KnowledgeBasePage() {
   const { user } = useAuth();
   const isStaff = user?.role === "agent" || user?.role === "admin";
+  const isAdmin = user?.role === "admin";
 
   const [docs, setDocs] = useState<KnowledgeDocRead[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -64,6 +80,26 @@ export function KnowledgeBasePage() {
       refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete document");
+    }
+  }
+
+  async function handleApprove(docId: string) {
+    setError(null);
+    try {
+      await approveKnowledgeDoc(docId);
+      refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to approve document");
+    }
+  }
+
+  async function handleReject(docId: string) {
+    setError(null);
+    try {
+      await rejectKnowledgeDoc(docId);
+      refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to reject document");
     }
   }
 
@@ -145,10 +181,17 @@ export function KnowledgeBasePage() {
                   <strong>{doc.title}</strong>
                   <span className="muted">
                     {doc.source ? `${doc.source} · ` : ""}
+                    {STATUS_LABELS[doc.status] ?? doc.status} ·{" "}
                     {new Date(doc.created_at).toLocaleString()}
                   </span>
                 </span>
                 <span className="staff-panel-row">
+                  {isAdmin && doc.status === "pending_review" && (
+                    <>
+                      <button onClick={() => handleApprove(doc.id)}>Approve</button>
+                      <button onClick={() => handleReject(doc.id)}>Reject</button>
+                    </>
+                  )}
                   <button onClick={() => setExpandedId(expandedId === doc.id ? null : doc.id)}>
                     {expandedId === doc.id ? "Hide" : "View"}
                   </button>

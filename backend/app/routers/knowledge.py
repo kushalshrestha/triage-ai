@@ -1,25 +1,46 @@
+import logging
 import uuid
+from collections.abc import Callable
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.database import get_db
+from app.database import get_db, get_session_factory
 from app.dependencies import STAFF_ROLES, get_current_user, require_role
-from app.models import KnowledgeDoc, User
-from app.rag.ingestion import ingest_document
+from app.models import KnowledgeDoc, KnowledgeDocStatus, User, UserRole
+from app.rag.ingestion import create_pending_knowledge_doc, process_knowledge_doc
 from app.rag.retrieval import retrieve_relevant_chunks
 from app.schemas import ChunkSearchResult, KnowledgeDocCreate, KnowledgeDocRead
 
 router = APIRouter(prefix="/knowledge", tags=["knowledge"])
+logger = logging.getLogger(__name__)
+
+
+def _process_in_background(session_factory: Callable[[], Session], doc_id: uuid.UUID) -> None:
+    """Runs after the response is sent (see ADR-0017) — opens its own
+    session via `session_factory` rather than reusing the request's
+    (closed by the time this runs). `contextualization_provider`/
+    `use_contextual_retrieval` stay at their defaults here; this router
+    doesn't expose them as request fields, matching current behavior.
+    """
+    db = session_factory()
+    try:
+        process_knowledge_doc(db, doc_id)
+    finally:
+        db.close()
 
 
 @router.post("", response_model=KnowledgeDocRead, status_code=status.HTTP_201_CREATED)
 def create_knowledge_doc(
     payload: KnowledgeDocCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
+    session_factory: Callable[[], Session] = Depends(get_session_factory),
     _current_user: User = Depends(require_role(*STAFF_ROLES)),
 ) -> KnowledgeDoc:
-    return ingest_document(db, title=payload.title, source=payload.source, content=payload.content)
+    doc = create_pending_knowledge_doc(db, title=payload.title, source=payload.source, content=payload.content)
+    background_tasks.add_task(_process_in_background, session_factory, doc.id)
+    return doc
 
 
 @router.get("", response_model=list[KnowledgeDocRead])
@@ -47,6 +68,41 @@ def search_knowledge(
         )
         for chunk, score in results
     ]
+
+
+def _transition_status(
+    db: Session, knowledge_doc_id: uuid.UUID, target: KnowledgeDocStatus
+) -> KnowledgeDoc:
+    doc = db.get(KnowledgeDoc, knowledge_doc_id)
+    if doc is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge doc not found")
+    if doc.status != KnowledgeDocStatus.PENDING_REVIEW:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Knowledge doc is {doc.status.value}, not pending_review",
+        )
+    doc.status = target
+    db.commit()
+    db.refresh(doc)
+    return doc
+
+
+@router.post("/{knowledge_doc_id}/approve", response_model=KnowledgeDocRead)
+def approve_knowledge_doc(
+    knowledge_doc_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(require_role(UserRole.ADMIN.value)),
+) -> KnowledgeDoc:
+    return _transition_status(db, knowledge_doc_id, KnowledgeDocStatus.APPROVED)
+
+
+@router.post("/{knowledge_doc_id}/reject", response_model=KnowledgeDocRead)
+def reject_knowledge_doc(
+    knowledge_doc_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(require_role(UserRole.ADMIN.value)),
+) -> KnowledgeDoc:
+    return _transition_status(db, knowledge_doc_id, KnowledgeDocStatus.REJECTED)
 
 
 @router.delete("/{knowledge_doc_id}", status_code=status.HTTP_204_NO_CONTENT)

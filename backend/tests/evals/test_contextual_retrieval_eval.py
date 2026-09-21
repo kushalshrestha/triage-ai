@@ -7,17 +7,20 @@ cross-section ambiguity (multiple different "X days" windows — trial,
 renewal, cancellation, refund — in different sections), so the
 technique has real material to work on.
 
-Two separate test functions, not one, so each gets its own fully
-isolated `db_session` — comparing "with" and "without" inside a single
-ingestion pass would put both versions' chunks in doc_chunks at once,
-with retrieve_relevant_chunks() searching across both indistinguishably.
-This mirrors a mistake made (and caught) in ADR-0013: a comparison
-against a shared/reused session produced numbers that turned out to be
-contamination artifacts.
+Three separate test functions, not one, so each gets its own fully
+isolated `db_session` — comparing variants inside a single ingestion
+pass would put all versions' chunks in doc_chunks at once, with
+retrieve_relevant_chunks() searching across all of them
+indistinguishably. This mirrors a mistake made (and caught) in
+ADR-0013: a comparison against a shared/reused session produced
+numbers that turned out to be contamination artifacts.
 
-Only `test_with_contextual_retrieval` calls Claude (contextualization
-at ingestion time) and is marked costly; `test_without_contextual_retrieval`
-makes no model calls and is free.
+Only `test_with_contextual_retrieval_claude` calls Claude
+(contextualization at ingestion time) and is marked costly.
+`test_without_contextual_retrieval` and
+`test_with_contextual_retrieval_ollama` make no Claude calls (the
+latter calls the local Ollama model instead — real per-call latency,
+zero $ cost) and are free.
 """
 import json
 from pathlib import Path
@@ -107,13 +110,13 @@ def test_without_contextual_retrieval(db_session: Session, record_eval_run):
 
 
 @pytest.mark.costly
-def test_with_contextual_retrieval(db_session: Session, record_eval_run):
+def test_with_contextual_retrieval_claude(db_session: Session, record_eval_run):
     from app.config import get_settings
     from app.models import EvalRunType
 
     ingest_document(
         db_session, title=DOC_TITLE, source=DOC_SOURCE, content=LONG_DOC,
-        use_contextual_retrieval=True,
+        use_contextual_retrieval=True, contextualization_provider="claude",
     )
     recall, mrr, hits, rrs = _score(db_session)
 
@@ -121,12 +124,65 @@ def test_with_contextual_retrieval(db_session: Session, record_eval_run):
     record_eval_run(
         run_type=EvalRunType.RETRIEVAL, model_used=model_used, score=recall,
         threshold=RECALL_THRESHOLD, passed=recall >= RECALL_THRESHOLD,
-        details={"metric": "recall@k", "k": K, "corpus": "contextual-with", "hits": hits, "reciprocal_ranks": rrs},
+        details={"metric": "recall@k", "k": K, "corpus": "contextual-with-claude", "hits": hits, "reciprocal_ranks": rrs},
     )
     record_eval_run(
         run_type=EvalRunType.RETRIEVAL, model_used=model_used, score=mrr,
         threshold=MRR_THRESHOLD, passed=mrr >= MRR_THRESHOLD,
-        details={"metric": "mrr@k", "k": K, "corpus": "contextual-with", "reciprocal_ranks": rrs},
+        details={"metric": "mrr@k", "k": K, "corpus": "contextual-with-claude", "reciprocal_ranks": rrs},
+    )
+    assert recall >= RECALL_THRESHOLD, f"recall@{K} was {recall:.2f}, expected >= {RECALL_THRESHOLD}"
+    assert mrr >= MRR_THRESHOLD, f"MRR@{K} was {mrr:.2f}, expected >= {MRR_THRESHOLD}"
+
+
+def test_with_contextual_retrieval_ollama(db_session: Session, record_eval_run):
+    from app.config import get_settings
+    from app.models import EvalRunType
+
+    ingest_document(
+        db_session, title=DOC_TITLE, source=DOC_SOURCE, content=LONG_DOC,
+        use_contextual_retrieval=True, contextualization_provider="ollama",
+    )
+    recall, mrr, hits, rrs = _score(db_session)
+
+    model_used = (
+        f"hybrid(local/{get_settings().embedding_model_name}+postgres-fts)"
+        f"+ollama-context({get_settings().ollama_model_name})"
+    )
+    record_eval_run(
+        run_type=EvalRunType.RETRIEVAL, model_used=model_used, score=recall,
+        threshold=RECALL_THRESHOLD, passed=recall >= RECALL_THRESHOLD,
+        details={"metric": "recall@k", "k": K, "corpus": "contextual-with-ollama", "hits": hits, "reciprocal_ranks": rrs},
+    )
+    record_eval_run(
+        run_type=EvalRunType.RETRIEVAL, model_used=model_used, score=mrr,
+        threshold=MRR_THRESHOLD, passed=mrr >= MRR_THRESHOLD,
+        details={"metric": "mrr@k", "k": K, "corpus": "contextual-with-ollama", "reciprocal_ranks": rrs},
+    )
+    assert recall >= RECALL_THRESHOLD, f"recall@{K} was {recall:.2f}, expected >= {RECALL_THRESHOLD}"
+    assert mrr >= MRR_THRESHOLD, f"MRR@{K} was {mrr:.2f}, expected >= {MRR_THRESHOLD}"
+
+
+def test_with_contextual_retrieval_heuristic(db_session: Session, record_eval_run):
+    from app.config import get_settings
+    from app.models import EvalRunType
+
+    ingest_document(
+        db_session, title=DOC_TITLE, source=DOC_SOURCE, content=LONG_DOC,
+        use_contextual_retrieval=True, contextualization_provider="heuristic",
+    )
+    recall, mrr, hits, rrs = _score(db_session)
+
+    model_used = f"hybrid(local/{get_settings().embedding_model_name}+postgres-fts)+heuristic-context"
+    record_eval_run(
+        run_type=EvalRunType.RETRIEVAL, model_used=model_used, score=recall,
+        threshold=RECALL_THRESHOLD, passed=recall >= RECALL_THRESHOLD,
+        details={"metric": "recall@k", "k": K, "corpus": "contextual-with-heuristic", "hits": hits, "reciprocal_ranks": rrs},
+    )
+    record_eval_run(
+        run_type=EvalRunType.RETRIEVAL, model_used=model_used, score=mrr,
+        threshold=MRR_THRESHOLD, passed=mrr >= MRR_THRESHOLD,
+        details={"metric": "mrr@k", "k": K, "corpus": "contextual-with-heuristic", "reciprocal_ranks": rrs},
     )
     assert recall >= RECALL_THRESHOLD, f"recall@{K} was {recall:.2f}, expected >= {RECALL_THRESHOLD}"
     assert mrr >= MRR_THRESHOLD, f"MRR@{K} was {mrr:.2f}, expected >= {MRR_THRESHOLD}"
