@@ -2,7 +2,17 @@ import enum
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import CheckConstraint, Enum, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Enum,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -66,6 +76,10 @@ class Retrieval(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     )
     similarity_score: Mapped[float] = mapped_column(Float, nullable=False)
     rank: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Whether the draft actually cited this chunk (see ADR-0019) —
+    # distinct from being retrieved: a chunk can be in the top-k
+    # candidate pool without the draft ever using it.
+    cited: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     agent_decision: Mapped["AgentDecision"] = relationship(back_populates="retrievals")
     doc_chunk: Mapped["DocChunk"] = relationship()

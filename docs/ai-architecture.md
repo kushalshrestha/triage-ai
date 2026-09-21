@@ -87,8 +87,28 @@ as placeholder text by the time you're presenting the project.
   `retrieve_relevant_chunks()` until an admin approves them
   (`POST /knowledge/{id}/approve`/`/reject`) — closes threat-model
   item #8 (malicious/poisoned document injection).
-- **Faithfulness:** how eval measures whether a response is actually
-  grounded in what was retrieved, vs. hallucinated.
+- **Faithfulness / grounded retrieval (Phase 16, ADR-0019):** drafts
+  are forced via Claude tool-use (`_DRAFT_TOOL` in
+  `app/agent/drafting.py`, `tool_choice: submit_draft`) to return
+  structured `cited_chunk_indices` alongside the reply — not free-text
+  citation markers. `generate_draft()` rejects an out-of-range index,
+  and (as of ADR-0019) rejects an empty citation list whenever context
+  was available, forcing an escalation rather than surfacing an
+  unverifiable reply. The independent groundedness judge
+  (`app/agent/judge.py::assess_groundedness`, ADR-0009) is checked
+  against **only the cited chunks**, not the full retrieved pool — a
+  reply citing chunk 0 while actually drawing on chunk 2 no longer
+  passes just because chunk 2 happens to be in the pool. Measured, not
+  assumed: `tests/evals/test_groundedness_eval.py` shows the same
+  reply passes when checked against a pool containing a supporting
+  chunk, but correctly fails when checked against only a
+  deliberately-misleading cited chunk — the concrete case pool-wide
+  checking would have missed. `retrievals.cited` persists which chunk
+  was actually cited (distinct from rank/similarity — verified live
+  against the running API: the rank-1, highest-similarity chunk was
+  *not* the one Claude cited in one real run), and the reviewer-facing
+  UI (`TicketDetailPage.tsx`) now shows the actual cited source title
+  + excerpt instead of a bare count.
 
 ## Agent design
 - **Decision space:** auto-respond / draft-for-review / escalate,

@@ -47,6 +47,28 @@ of "the evals actually caught something":
   run failed loudly with a Postgres error instead of writing bad data
   quietly.
 
+### Citation-scoped groundedness (Phase 16, ADR-0019)
+
+Auditing "grounded retrieval" found the groundedness judge was being
+checked against the *entire* retrieved pool, not the specific chunks a
+draft actually cites — meaning a misleading citation (right answer,
+wrong claimed source) could pass undetected as long as something
+relevant was anywhere in the pool. Two new real-Ollama-call eval cases
+in `test_groundedness_eval.py` prove the fix does something real:
+
+| Case | Context checked against | Result |
+|---|---|---|
+| Same reply, whole pool (today's pre-fix behavior) | refund chunk + cancellation chunk | **Passes** (a supporting chunk is present, so it looks grounded regardless of what was actually cited) |
+| Same reply, only the (deliberately wrong) cited chunk | refund chunk only | **Fails**, correctly |
+
+`orchestrator.py` now passes only `draft.cited_chunk_indices`'
+corresponding text to `assess_groundedness()`. Also verified live
+against the running API: in one real triage call, the rank-1
+(highest-similarity, 0.83) retrieved chunk was *not* the one Claude
+actually cited — it cited rank-2 (0.79) instead — confirming the new
+`retrievals.cited` column captures a genuinely distinct signal from
+similarity/rank, not a redundant derivative of it.
+
 ### Retrieval evals (Phases 9–13)
 
 Retrieval outgrew a single table row once recall@k gained an MRR@k

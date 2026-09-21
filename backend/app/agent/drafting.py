@@ -28,9 +28,11 @@ _DRAFT_TOOL = {
             "cited_chunk_indices": {
                 "type": "array",
                 "items": {"type": "integer"},
+                "minItems": 1,
                 "description": (
                     "0-based indices into the provided context chunks that this "
-                    "reply is grounded in."
+                    "reply is grounded in. Must cite at least one chunk whenever "
+                    "context was provided."
                 ),
             },
         },
@@ -51,9 +53,10 @@ class ClaudeUsage:
 
 
 class DraftSchemaError(Exception):
-    """Claude's tool call was missing, malformed, or cited an
-    out-of-range chunk index. Caught by the orchestrator to force an
-    escalation instead of surfacing a broken draft — see ADR-0009.
+    """Claude's tool call was missing, malformed, cited an out-of-range
+    chunk index, or cited nothing despite context being available (see
+    ADR-0019). Caught by the orchestrator to force an escalation
+    instead of surfacing a broken or unverifiable draft — see ADR-0009.
 
     `usage` is attached when available (ADR-0010) — the Claude call
     still cost money even when its output failed validation, so the
@@ -112,6 +115,11 @@ def generate_draft(
     ):
         raise DraftSchemaError(
             "cited_chunk_indices referenced a chunk outside the provided context", usage=usage
+        )
+
+    if context_chunks and not draft.cited_chunk_indices:
+        raise DraftSchemaError(
+            "reply cited no context despite context being available", usage=usage
         )
 
     return draft, usage

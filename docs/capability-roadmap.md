@@ -17,3 +17,4 @@ not as an afterthought.
 | 13 | Knowledge Ingestion | Cross-encoder re-ranking (see ADR-0016 — implemented, opt-in; targeted a real diagnosed failure, partially fixed it, net MRR worse due to 2 new regressions) | Done |
 | 14 | Knowledge Ingestion | Ingestion hardening — background chunk/embed via `BackgroundTasks`, no size cap (see ADR-0017); admin approve/reject workflow closing threat-model item #8 | Done |
 | 15 | Guardrails | Rate limiting on AI-facing endpoints — in-memory per-user fixed-window limiter, no new infra (see ADR-0018); closes threat-model item #4 | Done |
+| 16 | Grounded Retrieval | Citation-scoped groundedness verification — checks drafts against only the chunks they actually cite, not the whole retrieved pool; persists `Retrieval.cited`; surfaces real citations to reviewers (see ADR-0019) | Done |
