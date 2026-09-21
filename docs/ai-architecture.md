@@ -6,6 +6,18 @@ section in as the corresponding build phase lands; don't leave this
 as placeholder text by the time you're presenting the project.
 
 ## RAG design
+- **Retrieval evolution, at a glance (full story in ADR-0016):**
+  pure vector search (ADR-0007) → hybrid search added, no proven
+  benefit (ADR-0013) → contextual retrieval added, no proven benefit,
+  Claude dropped as a cost with nothing to show for it (ADR-0015) →
+  cross-encoder re-ranking added, targeted directly at a real
+  diagnosed failure (ADR-0014), partially fixed it but introduced two
+  new regressions and a net-worse MRR (ADR-0016). Three different,
+  individually well-reasoned techniques, all correctly implemented and
+  rigorously measured, none showing a net win on this project's actual
+  data — the measurement infrastructure (ADR-0012) proving that
+  honestly, including when the result isn't the one hoped for, is the
+  actual point of this phase sequence.
 - **Chunking strategy:** fixed-size character windows, 800 characters
   with 100-character overlap (`app/rag/chunking.py`). No tokenizer
   dependency, fully deterministic. See ADR-0007 for why, and for the
@@ -16,19 +28,27 @@ as placeholder text by the time you're presenting the project.
   ADR-0007 for the disk-budget reasoning. `doc_chunks.embedding` is
   `vector(384)`.
 - **Contextual retrieval (Phase 12, ADR-0015):** opt-in, off by
-  default — `ingest_document(..., use_contextual_retrieval=True)`
-  prepends a Claude-generated blurb situating each chunk within its
-  parent document before embedding, but only for documents that
-  produced more than one chunk (a single chunk already contains 100%
-  of its own context). Given almost every document in this project's
-  corpus is single-chunk, this triggers rarely by design. Measured
-  result on the one multi-section document built specifically to test
-  it: recall@3 = 1.0 both with and without; MRR@3 went from 0.90
-  (without) to 0.87 (with) — contextualization didn't help here, and
-  the reason is understood (a chunk genuinely straddling two topics
-  got a context blurb that made it look *more* similar to a
-  neighboring chunk's query, not less). Not enabled by default as a
-  result; the generated blurb is stored separately
+  default — `ingest_document(..., use_contextual_retrieval=True,
+  contextualization_provider="ollama"|"claude"|"heuristic")` prepends a
+  blurb situating each chunk within its parent document before
+  embedding, but only for documents that produced more than one chunk
+  (a single chunk already contains 100% of its own context). Given
+  almost every document in this project's corpus is single-chunk, this
+  triggers rarely by design. Three providers, all measured (not
+  reasoned about) on the one multi-section document built to test
+  this: recall@3 = 1.0 for all four configurations (including doing
+  nothing); MRR@3 was 0.90 without contextualization, 0.90 with Ollama
+  (`llama3.2:1b`, tying the baseline), 0.87 with Claude, and 0.80 with
+  a zero-cost title+position heuristic — the heuristic actively hurt,
+  diagnosed directly: its near-identical boilerplate across a
+  document's chunks pulls their embeddings toward each other instead
+  of distinguishing them. **Claude is deliberately not used** — no
+  provider beat doing nothing, so paying for Claude bought nothing;
+  default is `"ollama"` (free, ties the baseline) despite being ~4x
+  slower than Claude here (~37s vs ~9s for a 3-chunk document,
+  `keep_alive: 0`'s per-chunk reload cost) — acceptable since this path
+  triggers rarely. Not enabled by default given no evidence any
+  provider helps yet; the generated blurb is stored separately
   (`doc_chunks.context_prefix`), never mixed into `content`.
 - **Retrieval:** hybrid search as of Phase 10 (`app/rag/retrieval.py`,
   see ADR-0013) — top-10 candidates from cosine-similarity search
@@ -40,6 +60,33 @@ as placeholder text by the time you're presenting the project.
   `app/agent/orchestrator.py`'s routing thresholds depend on that. k=3
   is still the starting value; `tests/evals/test_retrieval_eval.py` is
   the mechanism for tuning it with actual numbers later.
+- **Cross-encoder re-ranking (Phase 13, ADR-0016):** opt-in, off by
+  default — `retrieve_relevant_chunks(..., use_reranking=True)`
+  re-orders the RRF candidate pool with `cross-encoder/ms-marco-MiniLM-L6-v2`
+  (`app/rag/rerank.py`) before taking the final top-k. Unlike hybrid
+  search and contextual retrieval, this was aimed directly at a
+  specific diagnosed failure (ADR-0014's crowded-out "return policy"
+  query), not a general technique applied on spec — and it partially
+  worked: that exact query recovered from a miss to rank 3. But two
+  other queries regressed (one from rank 1 to a complete miss), netting
+  MRR@3 from 0.917 to 0.852 on the real 89-doc corpus despite recall@3
+  staying flat at 17/18. Off by default given the net result, same
+  reasoning as hybrid search and contextual retrieval.
+- **Ingestion hardening (Phase 14, ADR-0017):** `POST /knowledge`
+  no longer blocks on the full chunk/embed pipeline — it creates the
+  `KnowledgeDoc` row (status `processing`) and returns immediately,
+  backgrounding the slow work via FastAPI `BackgroundTasks`. Chosen
+  over a fixed document-size cap (a client's legitimate document can
+  be arbitrarily large) and over standing up a real task queue
+  (Celery/arq — more infrastructure than this project's scale
+  justifies yet); the honest tradeoff is no durability/retry if the
+  process crashes mid-task, documented rather than glossed over. Every
+  test/eval across Phases 9-13 still calls `ingest_document()` directly
+  and synchronously — unchanged. New docs submitted through the API
+  also start `pending_review` and are invisible to
+  `retrieve_relevant_chunks()` until an admin approves them
+  (`POST /knowledge/{id}/approve`/`/reject`) — closes threat-model
+  item #8 (malicious/poisoned document injection).
 - **Faithfulness:** how eval measures whether a response is actually
   grounded in what was retrieved, vs. hallucinated.
 
