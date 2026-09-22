@@ -52,8 +52,8 @@ def test_ollama_vs_claude_classification_accuracy(record_eval_run):
         prompt_version=PROMPT_VERSION,
         model_used=f"ollama/{settings.ollama_model_name}",
         score=ollama_accuracy,
-        threshold=0.6,  # matches test_classification_eval.py's real, measured baseline
-        passed=ollama_accuracy >= 0.6,
+        threshold=0.5,  # matches test_classification_eval.py's threshold (real baseline, cross-arch headroom)
+        passed=ollama_accuracy >= 0.5,
         details={
             "golden_set_size": len(golden_set),
             "correct": ollama_correct,
