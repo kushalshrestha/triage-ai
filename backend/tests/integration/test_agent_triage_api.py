@@ -1,4 +1,4 @@
-"""classify_ticket and generate_draft are mocked here — per
+"""classify_ticket_with_fallback and generate_draft are mocked here — per
 testing-strategy.md's integration-layer rule, the LLM call gets a fixed
 stub so this stays fast/non-flaky and tests plumbing (persistence,
 authz, status codes), not model quality. Retrieval itself is NOT
@@ -72,7 +72,7 @@ def test_customer_cannot_trigger_triage(client: TestClient, db_session: Session)
 
 
 def test_good_kb_match_drafts_a_reply(client: TestClient, db_session: Session, monkeypatch):
-    monkeypatch.setattr(orchestrator, "classify_ticket", MagicMock(return_value="account"))
+    monkeypatch.setattr(orchestrator, "classify_ticket_with_fallback", MagicMock(return_value=("account", False)))
     mock_draft = MagicMock(
         return_value=(
             DraftOutput(reply_text="Here's how to reset your password: ...", cited_chunk_indices=[0]),
@@ -146,7 +146,7 @@ def test_good_kb_match_drafts_a_reply(client: TestClient, db_session: Session, m
 def test_malformed_draft_escalates_instead_of_surfacing_a_broken_reply(
     client: TestClient, db_session: Session, monkeypatch
 ):
-    monkeypatch.setattr(orchestrator, "classify_ticket", MagicMock(return_value="account"))
+    monkeypatch.setattr(orchestrator, "classify_ticket_with_fallback", MagicMock(return_value=("account", False)))
     monkeypatch.setattr(
         orchestrator, "generate_draft", MagicMock(side_effect=DraftSchemaError("bad tool call"))
     )
@@ -179,7 +179,7 @@ def test_malformed_draft_escalates_instead_of_surfacing_a_broken_reply(
 def test_ungrounded_draft_downgrades_auto_respond_to_draft_for_review(
     client: TestClient, db_session: Session, monkeypatch
 ):
-    monkeypatch.setattr(orchestrator, "classify_ticket", MagicMock(return_value="account"))
+    monkeypatch.setattr(orchestrator, "classify_ticket_with_fallback", MagicMock(return_value=("account", False)))
     monkeypatch.setattr(
         orchestrator,
         "generate_draft",
@@ -212,9 +212,9 @@ def test_ungrounded_draft_downgrades_auto_respond_to_draft_for_review(
 
 
 def test_no_kb_match_escalates(client: TestClient, db_session: Session, monkeypatch):
-    classify_mock = MagicMock(return_value="bug")
+    classify_mock = MagicMock(return_value=("bug", False))
     draft_mock = MagicMock()
-    monkeypatch.setattr(orchestrator, "classify_ticket", classify_mock)
+    monkeypatch.setattr(orchestrator, "classify_ticket_with_fallback", classify_mock)
     monkeypatch.setattr(orchestrator, "generate_draft", draft_mock)
 
     staff_token = _make_staff_user(db_session, "triage-agent-2@example.com")
@@ -233,12 +233,39 @@ def test_no_kb_match_escalates(client: TestClient, db_session: Session, monkeypa
     assert ticket_row.status == TicketStatus.ESCALATED
 
 
+def test_classification_fallback_recorded_in_model_used_even_when_escalated(
+    client: TestClient, db_session: Session, monkeypatch
+):
+    """ADR-0023: a classification fallback is a real Claude API call
+    even on a ticket that never reaches drafting — model_used must
+    reflect it, not just silently track drafting's Claude usage.
+    """
+    monkeypatch.setattr(
+        orchestrator, "classify_ticket_with_fallback", MagicMock(return_value=("account", True))
+    )
+    draft_mock = MagicMock()
+    monkeypatch.setattr(orchestrator, "generate_draft", draft_mock)
+
+    staff_token = _make_staff_user(db_session, "triage-agent-fallback@example.com")
+    customer_token = _register_customer(client, "fallback-customer@example.com")
+    ticket = _create_ticket(
+        client, customer_token, "Something obscure", "This is not covered by anything in the KB."
+    )
+
+    response = client.post(f"/tickets/{ticket['id']}/triage", headers=_auth_header(staff_token))
+    assert response.status_code == 201
+    body = response.json()
+    assert body["decision_type"] == "escalate"
+    assert "claude" in body["model_used"]
+    draft_mock.assert_not_called()
+
+
 def test_injection_short_circuits_without_calling_any_model(
     client: TestClient, db_session: Session, monkeypatch
 ):
     classify_mock = MagicMock()
     draft_mock = MagicMock()
-    monkeypatch.setattr(orchestrator, "classify_ticket", classify_mock)
+    monkeypatch.setattr(orchestrator, "classify_ticket_with_fallback", classify_mock)
     monkeypatch.setattr(orchestrator, "generate_draft", draft_mock)
 
     staff_token = _make_staff_user(db_session, "triage-agent-3@example.com")
@@ -270,7 +297,7 @@ def test_citing_a_weaker_chunk_downgrades_auto_respond(client: TestClient, db_se
     decision downgrades to draft_for_review on citation confidence
     alone (groundedness itself is mocked to pass, isolating the effect).
     """
-    monkeypatch.setattr(orchestrator, "classify_ticket", MagicMock(return_value="account"))
+    monkeypatch.setattr(orchestrator, "classify_ticket_with_fallback", MagicMock(return_value=("account", False)))
     monkeypatch.setattr(orchestrator, "assess_groundedness", MagicMock(return_value=(True, "verdict: grounded")))
 
     staff_token = _make_staff_user(db_session, "triage-agent-citation-confidence@example.com")

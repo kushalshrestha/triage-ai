@@ -1,21 +1,34 @@
-"""Routine ticket classification (see ADR-0008, ADR-0022). Informational
-only — it does not drive auto-respond/draft-for-review/escalate
-routing, which comes from RAG retrieval similarity instead (see
-app/agent/orchestrator.py).
+"""Routine ticket classification (see ADR-0008, ADR-0022, ADR-0023).
+Informational only — it does not drive auto-respond/draft-for-review/
+escalate routing, which comes from RAG retrieval similarity instead
+(see app/agent/orchestrator.py).
 
-`provider` defaults to `"ollama"` (free, local) — production
-(`app/agent/orchestrator.py`) never passes `provider`, so it always
-gets that default. `"claude"` exists for the real accuracy/latency
-comparison in `tests/evals/test_classification_provider_comparison_eval.py`
+`classify_ticket(text, provider=...)` — `provider` defaults to
+`"ollama"` (free, local); `"claude"` exists for the real accuracy/
+latency comparison in
+`tests/evals/test_classification_provider_comparison_eval.py`
 (ADR-0022) — measured, not assumed, that routing this routine task to
-the cheap local model isn't quietly costing real accuracy.
+the cheap local model isn't quietly costing real accuracy. Used only
+by evals; production doesn't call this directly.
+
+`classify_ticket_with_fallback(text)` — what
+`app/agent/orchestrator.py` actually calls (ADR-0023). ADR-0022 found
+Ollama's misses aren't random: it sometimes returns a bare word (e.g.
+"support") that isn't one of the 4 valid categories, a self-detecting
+failure. This tries Ollama first and only calls Claude for that one
+ticket when Ollama's own output didn't parse — most tickets stay free,
+some pay Claude's cost, informed by which one Ollama itself signaled
+it couldn't confidently answer.
 """
+import logging
 from typing import Literal
 
 from anthropic import Anthropic
 
 from app.agent.ollama_client import generate
 from app.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 PROMPT_VERSION = "v1"
 DEFAULT_CATEGORY = "bug"
@@ -84,10 +97,10 @@ def classify_ticket(text: str, provider: ClassificationProvider = "ollama") -> s
 
 def _classify_ticket_ollama(text: str) -> str:
     raw = generate(_OLLAMA_PROMPT_TEMPLATE.format(text=text))
-    return _match_category(raw)
+    return _match_category(raw) or DEFAULT_CATEGORY
 
 
-def _match_category(raw: str) -> str:
+def _match_category(raw: str) -> str | None:
     # A rambling model can mention multiple category words while
     # explaining itself before giving its actual answer — anchor on
     # whatever follows its last "category:" line (matching the prompt's
@@ -100,7 +113,31 @@ def _match_category(raw: str) -> str:
     for category in ("billing", "bug", "account"):
         if category in raw:
             return category
-    return DEFAULT_CATEGORY
+    # None, not DEFAULT_CATEGORY — distinguishes "Ollama gave an
+    # unparseable answer" (a real, diagnosed failure, ADR-0022) from
+    # "Ollama confidently said bug", which matters for
+    # classify_ticket_with_fallback() (ADR-0023) below.
+    return None
+
+
+def classify_ticket_with_fallback(text: str) -> tuple[str, bool]:
+    """Production path (ADR-0023): try Ollama; if its raw output
+    doesn't parse into a valid category, fall back to Claude for just
+    this ticket rather than silently defaulting. Returns
+    `(category, used_claude_fallback)` so the caller can track the
+    real model usage/cost accurately — a fallback call is a real
+    Claude API call even when it doesn't lead to a drafted reply.
+    """
+    raw = generate(_OLLAMA_PROMPT_TEMPLATE.format(text=text))
+    category = _match_category(raw)
+    if category is not None:
+        return category, False
+
+    try:
+        return _classify_ticket_claude(text), True
+    except Exception:
+        logger.exception("Claude classification fallback failed; using default category")
+        return DEFAULT_CATEGORY, True
 
 
 def _classify_ticket_claude(text: str) -> str:
