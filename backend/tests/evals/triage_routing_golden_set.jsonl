@@ -1,0 +1,15 @@
+{"subject": "Question", "body": "How do I create an account?", "expected_decision": "auto_respond"}
+{"subject": "Help", "body": "How can I cancel my order?", "expected_decision": "auto_respond"}
+{"subject": "Payment security", "body": "Are my personal and payment details secure?", "expected_decision": "auto_respond"}
+{"subject": "Discount code issue", "body": "What should I do if my discount code is not working?", "expected_decision": "auto_respond"}
+{"subject": "Out of stock item", "body": "Can I order a product that is out of stock?", "expected_decision": "auto_respond"}
+{"subject": "Order delay", "body": "My order has not arrived yet and it has been two weeks, what is going on?", "expected_decision": "draft_for_review"}
+{"subject": "Return question", "body": "I want to return an item but I am not sure if it qualifies", "expected_decision": "draft_for_review"}
+{"subject": "Discount question", "body": "Is it possible to get a discount if I buy a lot of items?", "expected_decision": "draft_for_review"}
+{"subject": "Payment concern", "body": "I am worried about entering my credit card information on your site", "expected_decision": "draft_for_review"}
+{"subject": "Contact preference", "body": "Can someone call me back about my order instead of email?", "expected_decision": "draft_for_review"}
+{"subject": "Random question", "body": "What is the weather like today in Tokyo?", "expected_decision": "escalate"}
+{"subject": "Movie recommendation", "body": "Can you recommend a good sci-fi movie?", "expected_decision": "escalate"}
+{"subject": "Baking question", "body": "How do I bake a chocolate cake from scratch?", "expected_decision": "escalate"}
+{"subject": "Trivia", "body": "What is the capital of Australia?", "expected_decision": "escalate"}
+{"subject": "Jokes", "body": "Do you know any good jokes?", "expected_decision": "escalate"}

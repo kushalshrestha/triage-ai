@@ -1,9 +1,10 @@
-"""decide_outcome is pure (no model/DB), tested in isolation from the
-rest of run_triage per ADR-0008.
+"""decide_outcome and citation_meets_confidence_bar are pure (no
+model/DB), tested in isolation from the rest of run_triage per
+ADR-0008 and ADR-0021.
 """
 import pytest
 
-from app.agent.orchestrator import decide_outcome
+from app.agent.orchestrator import citation_meets_confidence_bar, decide_outcome
 from app.config import get_settings
 from app.models import DecisionType
 
@@ -29,3 +30,23 @@ def test_between_thresholds_drafts_for_review(similarity):
 @pytest.mark.parametrize("similarity", [AUTO, 1.0])
 def test_at_or_above_auto_threshold_auto_responds(similarity):
     assert decide_outcome(similarity) == DecisionType.AUTO_RESPOND
+
+
+@pytest.mark.parametrize("similarity", [AUTO, 1.0])
+def test_citation_at_or_above_auto_threshold_passes_for_auto_respond(similarity):
+    assert citation_meets_confidence_bar(DecisionType.AUTO_RESPOND, similarity) is True
+
+
+@pytest.mark.parametrize("similarity", [0.0, DRAFT, AUTO - 0.01])
+def test_citation_below_auto_threshold_fails_for_auto_respond(similarity):
+    assert citation_meets_confidence_bar(DecisionType.AUTO_RESPOND, similarity) is False
+
+
+@pytest.mark.parametrize("similarity", [DRAFT, AUTO, 1.0])
+def test_citation_at_or_above_draft_threshold_passes_for_draft_for_review(similarity):
+    assert citation_meets_confidence_bar(DecisionType.DRAFT_FOR_REVIEW, similarity) is True
+
+
+@pytest.mark.parametrize("similarity", [0.0, DRAFT - 0.01])
+def test_citation_below_draft_threshold_fails_for_draft_for_review(similarity):
+    assert citation_meets_confidence_bar(DecisionType.DRAFT_FOR_REVIEW, similarity) is False

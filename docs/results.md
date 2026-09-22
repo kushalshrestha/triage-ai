@@ -9,29 +9,33 @@ unit/integration/eval split this all sits on top of.
 
 ## Eval results
 
-Full `pytest tests/evals` run (free + costly), latest on 2026-09-21.
+Full `pytest tests/evals` run (free + costly), latest on 2026-09-22.
 The retrieval eval has grown well beyond a single row since the
 initial version of this table — it's now three separate evals
 (synthetic corpus, real corpus, contextual retrieval comparison),
 covered in its own subsection below. Groundedness also outgrew a
-single row as of Phase 17 (ADR-0020) — see its own subsection.
-Classification remains small and synthetic; project-brief.md's review
-notes on sourcing real examples are resolved for retrieval (see Known
-limitations) but still open there.
+single row as of Phase 17 (ADR-0020), and triage routing as of Phase
+18 (ADR-0021) — see their own subsections. Classification remains
+small and synthetic; project-brief.md's review notes on sourcing real
+examples are resolved for retrieval (see Known limitations) but still
+open there.
 
 | Eval | Score | Threshold | n | Model(s) | Prompt version |
 |---|---|---|---|---|---|
 | Classification accuracy | 1.00 | ≥ 0.90 | 5 | `ollama/llama3.2:1b` | v1 |
 | Groundedness judge reliability | 0.636 | ≥ 0.5 | 11 (real golden set, ADR-0020) | `ollama/llama3.2:1b` | v1 |
-| Triage routing accuracy | 1.00 | ≥ 0.66 | 3 | `ollama/llama3.2:1b` + `claude-haiku-4-5-20251001` | n/a (routes on retrieval similarity, not a model call — see ADR-0008) |
+| Triage routing accuracy (real corpus) | 1.00 | ≥ 0.8 | 15 (real golden set, ADR-0021) | `local/all-MiniLM-L6-v2` (routes on retrieval similarity, no model call) | n/a |
+| Triage routing, end-to-end (real Claude) | 1.00 | ≥ 0.66 | 3 | `ollama/llama3.2:1b` + `claude-haiku-4-5-20251001` | n/a |
 
-Classification and triage routing are still a consistent 1.00 — not
-surprising yet, since these are small, deliberately clear-cut golden
-sets (this is exactly the "sanity-check the eval, don't just trust it"
-caution `project-brief.md`'s review notes raise). Groundedness is the
-one that actually got that sanity-check, and it's genuinely imperfect
-— see below. The real value of `eval_runs` existing is what happens
-*after* a prompt changes: `ADR-0010` set the current hardcoded
+Classification is still a consistent 1.00 — not surprising yet, since
+it's a small, deliberately clear-cut golden set (this is exactly the
+"sanity-check the eval, don't just trust it" caution
+`project-brief.md`'s review notes raise). Groundedness is the one
+that actually got that sanity-check, and it's genuinely imperfect —
+see below. Triage routing's 1.00 is now backed by a real, verified
+15-example measurement (Phase 18), not just a small clear-cut set —
+see its own subsection. The real value of `eval_runs` existing is what
+happens *after* a prompt changes: `ADR-0010` set the current hardcoded
 thresholds as the de facto regression baseline — a future prompt edit
 that drops classification below 0.90, say, fails its test and blocks
 `eval-smoke` in CI (`.github/workflows/ci.yml`).
@@ -100,6 +104,37 @@ against the same golden set before touching production code — 0.45,
 capability ceiling of this local 1B model on this task, not a
 fixable prompt. Kept as-is; documented plainly rather than either
 hidden or over-corrected.
+
+### Triage routing accuracy (Phase 18, ADR-0021)
+
+ADR-0008 named `test_triage_eval.py` as "the mechanism for revisiting
+[the 0.5/0.8 thresholds] with real accuracy numbers instead of
+intuition" — that revisit never happened until now. Routing only
+depends on retrieval similarity, computed before Claude is ever
+called, so a free eval could be built without touching that costly
+3-example end-to-end test: `tests/evals/test_triage_routing_eval.py`
+seeds the real MakTek corpus (Phase 11) and checks `decide_outcome()`
+directly against a 15-example golden set (5 each: `auto_respond`,
+`draft_for_review`, `escalate`).
+
+**Real measured result: 15/15 (1.00)** — no threshold change
+warranted. Every example's expected bucket was verified against real
+retrieval before being added, not assumed: several initial candidates
+shifted buckets once the ticket *subject* was included in the query
+(the real production query is `subject\nbody`, not body alone) and
+were adjusted based on what was actually measured — e.g. "Is it
+possible to get a discount if I buy a lot of items?" scored 0.736
+alone but 0.822 with subject "Bulk discount" attached (crossing the
+auto-respond line), settled at 0.703 with a more neutral subject.
+
+Also added this phase: a post-draft check
+(`app/agent/orchestrator.py::citation_meets_confidence_bar`) that
+reconciles routing confidence against the chunk actually *cited*, not
+just the top-retrieved one — the two can differ (confirmed live in
+ADR-0019: a 0.83-similarity top match, but Claude cited the 0.79
+runner-up instead). An `auto_respond` decision now downgrades to
+`draft_for_review` if the cited chunk's own similarity falls short,
+logged as a new `citation_confidence` guardrail check.
 
 ### Retrieval evals (Phases 9–13)
 
