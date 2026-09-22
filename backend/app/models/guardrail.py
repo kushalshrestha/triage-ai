@@ -25,6 +25,7 @@ class GuardrailCheckType(str, enum.Enum):
     SCHEMA_VALIDATION = "schema_validation"
     GROUNDEDNESS = "groundedness"
     CONFIDENCE_THRESHOLD = "confidence_threshold"
+    CITATION_CONFIDENCE = "citation_confidence"  # added ADR-0021
 
 
 class GuardrailCheck(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
