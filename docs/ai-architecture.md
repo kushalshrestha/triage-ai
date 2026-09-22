@@ -159,11 +159,25 @@ as placeholder text by the time you're presenting the project.
   comparison in this project. Ollama's misses are a real capability
   ceiling (a bare `"support"` response for harder tickets, not one of
   the 4 valid categories) — three prompt variants were tried and none
-  fixed it. **Ollama stays the default anyway**: classification is
-  informational-only (doesn't drive auto-respond/draft-for-review/
-  escalate) and runs on 100% of triage volume, unlike drafting's
-  partial volume — a deliberate, now-quantified tradeoff, not an
-  unexamined one.
+  fixed it. Initial conclusion: keep Ollama as the default anyway,
+  since classification is informational-only (doesn't drive
+  auto-respond/draft-for-review/escalate) and runs on 100% of triage
+  volume, unlike drafting's partial volume — refined by Phase 20
+  below, not reversed.
+- **Classification fallback routing (Phase 20, ADR-0023):** Ollama's
+  misses turned out self-detecting — it sometimes returns a bare word
+  (e.g. `"support"`) that isn't one of the 4 valid categories, and the
+  code already knows this at the moment it happens.
+  `classify_ticket_with_fallback()` (what `orchestrator.py` actually
+  calls) tries Ollama first and only calls Claude for that one ticket
+  when Ollama's own output didn't parse. **Real result: 1.00 accuracy
+  (matches Claude-only) at a 58% Claude-call rate** — not the ~33%
+  informally estimated before measuring; a real, meaningful reduction
+  from 100% volume, not an elimination of it. Latency on the fallback
+  path is additive (~6.6s Ollama + ~0.7s Claude, sequentially), stated
+  plainly rather than hidden. Verified live against the running API,
+  not just the eval — a real ticket's `reasoning` field showed
+  `"(Claude fallback)"` when it fired.
 - **Claude (hosted):** `claude-haiku-4-5-20251001` (configurable via
   `Settings.claude_model_name`), used for grounded draft generation
   (`app/agent/drafting.py`) once retrieval similarity clears the

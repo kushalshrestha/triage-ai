@@ -15,30 +15,36 @@ initial version of this table — it's now three separate evals
 (synthetic corpus, real corpus, contextual retrieval comparison),
 covered in its own subsection below. Groundedness outgrew a single row
 as of Phase 17 (ADR-0020), triage routing as of Phase 18 (ADR-0021),
-and classification as of Phase 19 (ADR-0022) — see their own
-subsections. project-brief.md's review notes on sourcing real examples
-are resolved for retrieval (see Known limitations) but still open for
-classification/groundedness's hand-crafted (if now more diverse)
-golden sets.
+and classification as of Phases 19-20 (ADR-0022, ADR-0023) — see
+their own subsections. project-brief.md's review notes on sourcing
+real examples are resolved for retrieval (see Known limitations) but
+still open for classification/groundedness's hand-crafted (if now
+more diverse) golden sets.
 
 | Eval | Score | Threshold | n | Model(s) | Prompt version |
 |---|---|---|---|---|---|
-| Classification accuracy (Ollama) | 0.67 | ≥ 0.6 | 12 (real golden set, ADR-0022) | `ollama/llama3.2:1b` | v1 |
+| Classification accuracy (Ollama only, free eval) | 0.67 | ≥ 0.6 | 12 (real golden set, ADR-0022) | `ollama/llama3.2:1b` | v1 |
+| Classification accuracy (production: Ollama + Claude fallback) | **1.00** | ≥ 0.8 | 12 (same golden set, ADR-0023) | `ollama/llama3.2:1b` + `claude-haiku-4-5-20251001` (58% of calls) | v1 |
 | Groundedness judge reliability | 0.636 | ≥ 0.5 | 11 (real golden set, ADR-0020) | `ollama/llama3.2:1b` | v1 |
 | Triage routing accuracy (real corpus) | 1.00 | ≥ 0.8 | 15 (real golden set, ADR-0021) | `local/all-MiniLM-L6-v2` (routes on retrieval similarity, no model call) | n/a |
 | Triage routing, end-to-end (real Claude) | 1.00 | ≥ 0.66 | 3 | `ollama/llama3.2:1b` + `claude-haiku-4-5-20251001` | n/a |
 
-Classification's score dropped from a perfect 1.00 to 0.67 this phase
-— not a regression, a correction: the original 5-example golden set
-was inflated by near-duplicate few-shot examples (see below), and 1.00
-was measuring recall of the prompt's own examples, not real
-generalization. Triage routing's 1.00 is backed by a real, verified
-15-example measurement (Phase 18) — see its own subsection. The real
-value of `eval_runs` existing is what happens *after* a prompt
-changes: `ADR-0010` set hardcoded thresholds as the de facto
-regression baseline — a future prompt edit that drops classification
-below 0.6, say, fails its test and blocks `eval-smoke` in CI
-(`.github/workflows/ci.yml`).
+Classification's free-eval score dropped from a perfect 1.00 to 0.67
+in Phase 19 — not a regression, a correction: the original 5-example
+golden set was inflated by near-duplicate few-shot examples (see
+below), and 1.00 was measuring recall of the prompt's own examples,
+not real generalization. What actually runs in production, though, is
+Phase 20's fallback hybrid — real accuracy back to 1.00, at a real
+measured 58% Claude-call rate rather than the 100% a full switch would
+need. Triage routing's 1.00 is backed by a real, verified 15-example
+measurement (Phase 18) — see its own subsection. The real value of
+`eval_runs` existing is what happens *after* a prompt changes:
+`ADR-0010` set hardcoded thresholds as the de facto regression
+baseline — a future prompt edit that drops the free Ollama-only
+accuracy below 0.6 fails its test and blocks `eval-smoke` in CI
+(`.github/workflows/ci.yml`); the production hybrid's 0.8 threshold is
+checked by a `@pytest.mark.costly` eval (real Claude calls), so it
+runs in `eval-full` (nightly/manual), not on every PR.
 
 Two real findings from building this eval layer, documented in full in
 their ADRs, summarized here because they're the more interesting part
@@ -166,16 +172,43 @@ variants were tried to fix this (more emphatic instructions, broader
 few-shot examples); none genuinely improved it (0.50, 0.67 — see
 ADR-0022 for the full breakdown).
 
-**Ollama stays the default anyway.** Classification is informational
-only (doesn't drive auto-respond/draft-for-review/escalate) and runs
-on 100% of triage volume, unlike drafting's partial volume — adding a
-real, network-dependent paid call to every triage decision for a field
-that only affects internal tracking text isn't the same tradeoff as
-paying for drafting, where the output reaches the customer directly.
-Claude's real per-call cost, measured directly: 791 input / 33 output
-tokens (small — well below drafting's ~3,661/~411 average) — cost
-wasn't the blocker, volume-times-dependency was. Recorded as a
-deliberate, now-quantified tradeoff, not an unexamined default.
+**Initial conclusion: Ollama stays the default anyway.** Classification
+is informational only (doesn't drive auto-respond/draft-for-review/
+escalate) and runs on 100% of triage volume, unlike drafting's partial
+volume — adding a real, network-dependent paid call to every triage
+decision for a field that only affects internal tracking text isn't
+the same tradeoff as paying for drafting, where the output reaches the
+customer directly. Claude's real per-call cost, measured directly: 791
+input / 33 output tokens (small — well below drafting's ~3,661/~411
+average) — cost wasn't the blocker, volume-times-dependency was.
+Refined, not reversed, by Phase 20 below.
+
+### Classification fallback routing (Phase 20, ADR-0023)
+
+Ollama's misses (above) turned out self-detecting: the bare-word
+failure (`"support"` instead of a real category) is something the code
+already knows about at the moment it happens. `classify_ticket_with_fallback()`
+(what `orchestrator.py` actually calls in production) tries Ollama
+first and only calls Claude for that one ticket when Ollama's own
+output didn't parse.
+
+| Path | Accuracy | Claude-call rate |
+|---|---|---|
+| Ollama only | 0.67 | 0% |
+| **Fallback hybrid (production)** | **1.00** | **58%** (7/12) |
+| Claude only | 1.00 | 100% |
+
+**Matches Claude's full accuracy at close to half the Claude-call
+volume.** The 58% figure corrects an earlier, more flattering informal
+estimate (~33%) made before this was actually measured — the honest
+number counts every case where Ollama's own output was unparseable,
+not just the subset that happened to be visibly wrong under the old
+silent-default behavior. Latency on the fallback path is additive
+(Ollama's ~6.6s reload *plus* Claude's ~0.7s round-trip, not either
+alone) — a real cost of "try cheap first, escalate on failure,"
+documented rather than glossed over. Verified live against the
+running API, not just the eval: a real ticket's `reasoning` field read
+`"classified as 'feature_request' (Claude fallback); ..."`.
 
 ### Retrieval evals (Phases 9–13)
 
