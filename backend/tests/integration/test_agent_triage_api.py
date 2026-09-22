@@ -16,6 +16,7 @@ from app.agent.drafting import ClaudeUsage, DraftOutput, DraftSchemaError
 from app.models import (
     AgentDecision,
     GuardrailCheck,
+    GuardrailCheckType,
     Retrieval,
     Ticket,
     TicketEvent,
@@ -131,7 +132,11 @@ def test_good_kb_match_drafts_a_reply(client: TestClient, db_session: Session, m
         .one()
     )
     assert draft_event.payload["citations"] == [
-        {"knowledge_doc_title": "Password Reset FAQ", "content": PASSWORD_RESET_DOC}
+        {
+            "knowledge_doc_title": "Password Reset FAQ",
+            "content": PASSWORD_RESET_DOC,
+            "similarity_score": cited_retrievals[0].similarity_score,
+        }
     ]
 
     ticket_row = db_session.get(Ticket, ticket["id"])
@@ -255,3 +260,54 @@ def test_injection_short_circuits_without_calling_any_model(
 
     ticket_row = db_session.get(Ticket, ticket["id"])
     assert ticket_row.status == TicketStatus.ESCALATED
+
+
+def test_citing_a_weaker_chunk_downgrades_auto_respond(client: TestClient, db_session: Session, monkeypatch):
+    """ADR-0021: top_similarity (the top-retrieved chunk) can clear the
+    auto-respond bar while the chunk Claude actually cites doesn't —
+    real evidence this happens is in ADR-0019's Consequences. Mock the
+    draft to cite the weaker, non-top-ranked doc and confirm the
+    decision downgrades to draft_for_review on citation confidence
+    alone (groundedness itself is mocked to pass, isolating the effect).
+    """
+    monkeypatch.setattr(orchestrator, "classify_ticket", MagicMock(return_value="account"))
+    monkeypatch.setattr(orchestrator, "assess_groundedness", MagicMock(return_value=(True, "verdict: grounded")))
+
+    staff_token = _make_staff_user(db_session, "triage-agent-citation-confidence@example.com")
+    ingest_document(db_session, title="Password Reset FAQ", source="faq", content=PASSWORD_RESET_DOC)
+    ingest_document(db_session, title="Billing Refund FAQ", source="faq", content=BILLING_REFUND_DOC)
+
+    customer_token = _register_customer(client, "citation-confidence-customer@example.com")
+    # Near-identical wording to the ingested doc to reliably clear the
+    # auto_respond similarity threshold with the real embedding model
+    # (same pattern as test_ungrounded_draft_downgrades_auto_respond_to_draft_for_review).
+    ticket = _create_ticket(client, customer_token, "Password help", PASSWORD_RESET_DOC)
+
+    # Cite index 1 — the weaker, non-top-ranked doc for this query (the
+    # billing doc, unrelated to password reset) — regardless of which
+    # index that lands at, its similarity is well below the auto-respond
+    # threshold for a password-reset query, unlike the top match.
+    mock_draft = MagicMock(
+        return_value=(
+            DraftOutput(reply_text="Here's how to reset your password: ...", cited_chunk_indices=[1]),
+            ClaudeUsage(input_tokens=120, output_tokens=40),
+        )
+    )
+    monkeypatch.setattr(orchestrator, "generate_draft", mock_draft)
+
+    response = client.post(f"/tickets/{ticket['id']}/triage", headers=_auth_header(staff_token))
+    assert response.status_code == 201
+    body = response.json()
+
+    decision = db_session.get(AgentDecision, body["id"])
+    # confidence_score reflects top_similarity (pre-draft) — if that
+    # wasn't >= the auto-respond threshold to begin with, this test
+    # isn't exercising the scenario it's meant to; the real assertion
+    # is on decision_type and the new guardrail check below.
+    assert decision.confidence_score is not None and decision.confidence_score >= 0.8
+    assert body["decision_type"] == "draft_for_review"
+
+    checks = db_session.query(GuardrailCheck).filter_by(agent_decision_id=decision.id).all()
+    citation_check = next(c for c in checks if c.check_type == GuardrailCheckType.CITATION_CONFIDENCE)
+    assert citation_check.passed is False
+    assert citation_check.details["min_cited_similarity"] < 0.8
