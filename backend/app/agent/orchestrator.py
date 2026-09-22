@@ -45,6 +45,25 @@ def _clamp_similarity(value: float) -> float:
     return max(0.0, min(1.0, value))
 
 
+def citation_meets_confidence_bar(decision_type: DecisionType, min_cited_similarity: float) -> bool:
+    """Pure, kept separate like decide_outcome() — see ADR-0021.
+
+    `top_similarity` (the top-*retrieved* chunk) drives the initial
+    routing decision before drafting happens; this checks whether the
+    chunk(s) actually cited still clear the bar that decision implied,
+    using the same thresholds. `min_cited_similarity` is the weakest of
+    the cited chunks — a reply is only as trustworthy as its weakest
+    citation.
+    """
+    settings = get_settings()
+    threshold = (
+        settings.auto_respond_confidence_threshold
+        if decision_type == DecisionType.AUTO_RESPOND
+        else settings.draft_confidence_threshold
+    )
+    return min_cited_similarity >= threshold
+
+
 def run_triage(db: Session, ticket: Ticket) -> AgentDecision:
     start_time = time.monotonic()
     raw_text = f"{ticket.subject}\n{ticket.body}"
@@ -104,6 +123,8 @@ def run_triage(db: Session, ticket: Ticket) -> AgentDecision:
     groundedness_passed: bool | None = None
     groundedness_raw: str | None = None
     claude_usage: ClaudeUsage | None = None
+    min_cited_similarity: float | None = None
+    citation_confidence_passed: bool | None = None
 
     if decision_type in (DecisionType.DRAFT_FOR_REVIEW, DecisionType.AUTO_RESPOND):
         account_context = get_account_context(db, ticket.requester)
@@ -135,6 +156,20 @@ def run_triage(db: Session, ticket: Ticket) -> AgentDecision:
             if not groundedness_passed and decision_type == DecisionType.AUTO_RESPOND:
                 decision_type = DecisionType.DRAFT_FOR_REVIEW
 
+            # Post-draft confidence check — see ADR-0021. top_similarity
+            # drove the initial routing decision before drafting; this
+            # reconciles it against what was actually cited, since the
+            # two can differ (confirmed live in Phase 16: the top-
+            # retrieved chunk wasn't always the one Claude cited).
+            min_cited_similarity = min(
+                _clamp_similarity(retrieved[i][1]) for i in draft.cited_chunk_indices
+            )
+            citation_confidence_passed = citation_meets_confidence_bar(
+                decision_type, min_cited_similarity
+            )
+            if not citation_confidence_passed and decision_type == DecisionType.AUTO_RESPOND:
+                decision_type = DecisionType.DRAFT_FOR_REVIEW
+
     reasoning_parts = [
         f"classified as '{category}'",
         f"top retrieval similarity={top_similarity:.2f}" if top_similarity is not None else "no retrieval match",
@@ -144,6 +179,11 @@ def run_triage(db: Session, ticket: Ticket) -> AgentDecision:
     if groundedness_passed is not None:
         reasoning_parts.append(
             "groundedness=passed" if groundedness_passed else "groundedness=failed (downgraded from auto_respond)"
+        )
+    if citation_confidence_passed is not None:
+        reasoning_parts.append(
+            f"citation confidence={'passed' if citation_confidence_passed else 'failed'} "
+            f"(min cited similarity={min_cited_similarity:.2f})"
         )
 
     decision = AgentDecision(
@@ -212,6 +252,18 @@ def run_triage(db: Session, ticket: Ticket) -> AgentDecision:
                 check_type=GuardrailCheckType.GROUNDEDNESS,
                 passed=groundedness_passed,
                 details={"judge_raw_verdict": groundedness_raw},
+            )
+        )
+
+    if citation_confidence_passed is not None:
+        db.add(
+            GuardrailCheck(
+                ticket_id=ticket.id,
+                agent_decision_id=decision.id,
+                stage=GuardrailStage.OUTPUT,
+                check_type=GuardrailCheckType.CITATION_CONFIDENCE,
+                passed=citation_confidence_passed,
+                details={"min_cited_similarity": min_cited_similarity},
             )
         )
 

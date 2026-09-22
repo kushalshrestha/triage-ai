@@ -121,9 +121,25 @@ as placeholder text by the time you're presenting the project.
   does not change the routing decision itself.
 - **Confidence threshold:** routing comes from the top RAG retrieval's
   cosine similarity (not a separate model call — see ADR-0008 for why).
-  Starting guesses: `< 0.5` → escalate, `0.5–0.8` → draft-for-review,
-  `≥ 0.8` → auto-respond. `tests/evals/test_triage_eval.py` is the
-  mechanism for revisiting these with real accuracy data.
+  `< 0.5` → escalate, `0.5–0.8` → draft-for-review, `≥ 0.8` →
+  auto-respond — no longer just "starting guesses": Phase 18 (ADR-0021)
+  finally did the real-accuracy revisit ADR-0008 named as future work,
+  measuring **15/15 (1.0)** on a real, verified 15-example golden set
+  against the MakTek corpus (`tests/evals/test_triage_routing_eval.py`,
+  free — routing only depends on retrieval, not Claude). No threshold
+  change was warranted.
+- **Citation-scoped routing confidence (Phase 18, ADR-0021):** the
+  thresholds above are checked again, post-draft, against the chunk(s)
+  actually cited (`app/agent/orchestrator.py::citation_meets_confidence_bar`)
+  — not just the top-retrieved chunk, which can differ from what
+  Claude actually used (confirmed live in ADR-0019's Consequences). An
+  `auto_respond` decision downgrades to `draft_for_review` if the
+  *cited* chunk's own similarity falls short, logged as a new
+  `GuardrailCheckType.CITATION_CONFIDENCE` check. Deliberately kept
+  deterministic/numeric rather than adding an LLM-decided confidence
+  step — Phase 17 (ADR-0020) just measured a real reliability ceiling
+  in this project's local judge model on a comparably nuanced task,
+  which argues against giving it more autonomy here, not less.
 
 ## Model routing (LLMOps)
 - **Ollama (local):** `llama3.2:1b`, used for routine ticket
