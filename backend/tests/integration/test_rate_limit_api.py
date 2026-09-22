@@ -42,7 +42,7 @@ def _auth_header(token: str) -> dict[str, str]:
 def test_triage_endpoint_returns_429_after_exceeding_the_limit(
     client: TestClient, db_session: Session, monkeypatch
 ):
-    monkeypatch.setattr(orchestrator, "classify_ticket", MagicMock(return_value="bug"))
+    monkeypatch.setattr(orchestrator, "classify_ticket_with_fallback", MagicMock(return_value=("bug", False)))
     monkeypatch.setattr(orchestrator, "generate_draft", MagicMock())
 
     staff_token = _make_staff_user(db_session, "rate-limit-triage-agent@example.com")
@@ -67,7 +67,7 @@ def test_triage_endpoint_returns_429_after_exceeding_the_limit(
 
 
 def test_triage_rate_limit_is_scoped_per_user(client: TestClient, db_session: Session, monkeypatch):
-    monkeypatch.setattr(orchestrator, "classify_ticket", MagicMock(return_value="bug"))
+    monkeypatch.setattr(orchestrator, "classify_ticket_with_fallback", MagicMock(return_value=("bug", False)))
     monkeypatch.setattr(orchestrator, "generate_draft", MagicMock())
 
     limit = get_settings().triage_rate_limit_per_minute

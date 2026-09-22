@@ -2,7 +2,7 @@ import time
 
 from sqlalchemy.orm import Session
 
-from app.agent.classify import classify_ticket
+from app.agent.classify import classify_ticket_with_fallback
 from app.agent.drafting import ClaudeUsage, DraftOutput, DraftSchemaError, generate_draft
 from app.agent.judge import assess_groundedness
 from app.agent.tools import get_account_context
@@ -108,7 +108,7 @@ def run_triage(db: Session, ticket: Ticket) -> AgentDecision:
     retrieved = retrieve_relevant_chunks(db, query_text=redacted_text, k=3)
     top_similarity = _clamp_similarity(retrieved[0][1]) if retrieved else None
 
-    category = classify_ticket(redacted_text)
+    category, used_claude_for_classification = classify_ticket_with_fallback(redacted_text)
     decision_type = decide_outcome(top_similarity)
     # Captured before schema/groundedness can change decision_type below,
     # so this guardrail row reflects what it actually checked: retrieval
@@ -116,6 +116,11 @@ def run_triage(db: Session, ticket: Ticket) -> AgentDecision:
     routing_passed = decision_type != DecisionType.ESCALATE
 
     models_used: list[str] = [f"ollama/{settings.ollama_model_name}"]
+    # A classification fallback (ADR-0023) is a real Claude API call
+    # even when this ticket never reaches drafting (e.g. it escalates
+    # on retrieval similarity alone) — model_used must reflect it.
+    if used_claude_for_classification:
+        models_used.append(settings.claude_model_name)
 
     draft: DraftOutput | None = None
     schema_valid: bool | None = None
@@ -171,7 +176,7 @@ def run_triage(db: Session, ticket: Ticket) -> AgentDecision:
                 decision_type = DecisionType.DRAFT_FOR_REVIEW
 
     reasoning_parts = [
-        f"classified as '{category}'",
+        f"classified as '{category}'" + (" (Claude fallback)" if used_claude_for_classification else ""),
         f"top retrieval similarity={top_similarity:.2f}" if top_similarity is not None else "no retrieval match",
     ]
     if schema_valid is False:
