@@ -1,5 +1,12 @@
-{"ticket_text": "I was charged twice for my subscription this month.", "expected_label": "billing"}
-{"ticket_text": "The app crashes every time I try to upload a photo.", "expected_label": "bug"}
-{"ticket_text": "How do I change my account email address?", "expected_label": "account"}
-{"ticket_text": "Can you add dark mode to the dashboard?", "expected_label": "feature_request"}
+{"ticket_text": "My credit card was billed for a plan I already cancelled last week.", "expected_label": "billing"}
+{"ticket_text": "Every time I try to save my settings, the page just freezes.", "expected_label": "bug"}
+{"ticket_text": "I forgot the password to my account and the reset link never arrives.", "expected_label": "account"}
+{"ticket_text": "It would be great if we could export reports as PDF instead of just CSV.", "expected_label": "feature_request"}
 {"ticket_text": "My data export has been stuck at 0% for two days.", "expected_label": "bug"}
+{"ticket_text": "Why does my invoice show a different amount than what I agreed to when I signed up?", "expected_label": "billing"}
+{"ticket_text": "I can't seem to update the phone number linked to my profile.", "expected_label": "account"}
+{"ticket_text": "Any chance you'll support two-factor authentication via an app instead of SMS?", "expected_label": "feature_request"}
+{"ticket_text": "The search bar returns no results even for terms I know exist in my documents.", "expected_label": "bug"}
+{"ticket_text": "I'd like to switch from monthly billing to annual, is that something I can do myself?", "expected_label": "billing"}
+{"ticket_text": "I can't log in anymore and I also noticed a strange charge on my card from last week.", "expected_label": "account", "note": "deliberately ambiguous: also plausibly billing (mentions a charge); labeled account since the login failure is the primary, actionable complaint"}
+{"ticket_text": "The app won't let me change my email and keeps showing an error message.", "expected_label": "account", "note": "deliberately ambiguous: also plausibly bug (an error message); labeled account since the underlying intent is an account settings change"}
