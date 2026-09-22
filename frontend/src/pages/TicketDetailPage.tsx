@@ -10,18 +10,25 @@ const TICKET_STATUSES: TicketStatus[] = ["open", "pending", "resolved", "closed"
 interface Citation {
   knowledge_doc_title: string;
   content: string;
+  // Optional: events recorded before this field was added won't have it.
+  similarity_score?: number;
 }
 
 function parseCitations(payload: Record<string, unknown> | null | undefined): Citation[] {
   const raw = payload?.citations;
   if (!Array.isArray(raw)) return [];
-  return raw.filter(
-    (c): c is Citation =>
-      typeof c === "object" &&
-      c !== null &&
-      typeof (c as Citation).knowledge_doc_title === "string" &&
-      typeof (c as Citation).content === "string",
-  );
+  return raw
+    .filter(
+      (c): c is Citation =>
+        typeof c === "object" &&
+        c !== null &&
+        typeof (c as Citation).knowledge_doc_title === "string" &&
+        typeof (c as Citation).content === "string",
+    )
+    .map((c) => ({
+      ...c,
+      similarity_score: typeof c.similarity_score === "number" ? c.similarity_score : undefined,
+    }));
 }
 
 function EventBody({ event }: { event: TicketEventRead }) {
@@ -60,6 +67,9 @@ function EventBody({ event }: { event: TicketEventRead }) {
                 <li key={i} className="citation-item">
                   <p className="draft-event-meta">
                     <strong>{citation.knowledge_doc_title}</strong>
+                    {citation.similarity_score !== undefined && (
+                      <span className="muted">similarity {citation.similarity_score.toFixed(2)}</span>
+                    )}
                   </p>
                   <blockquote className="citation-excerpt">{citation.content}</blockquote>
                 </li>
