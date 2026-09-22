@@ -8,5 +8,6 @@ dist/
 .pytest_cache/
 .DS_Store
 CLAUDE.local.md
+.claude/
 .venv
 */.env

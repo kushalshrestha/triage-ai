@@ -220,6 +220,7 @@ def run_triage(db: Session, ticket: Ticket) -> AgentDecision:
             {
                 "knowledge_doc_title": retrieved[i][0].knowledge_doc.title,
                 "content": retrieved[i][0].content,
+                "similarity_score": _clamp_similarity(retrieved[i][1]),
             }
             for i in draft.cited_chunk_indices
         ]

@@ -131,7 +131,11 @@ def test_good_kb_match_drafts_a_reply(client: TestClient, db_session: Session, m
         .one()
     )
     assert draft_event.payload["citations"] == [
-        {"knowledge_doc_title": "Password Reset FAQ", "content": PASSWORD_RESET_DOC}
+        {
+            "knowledge_doc_title": "Password Reset FAQ",
+            "content": PASSWORD_RESET_DOC,
+            "similarity_score": cited_retrievals[0].similarity_score,
+        }
     ]
 
     ticket_row = db_session.get(Ticket, ticket["id"])
