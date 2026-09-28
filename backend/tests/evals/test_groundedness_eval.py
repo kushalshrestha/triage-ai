@@ -48,7 +48,7 @@ def _load_golden_set() -> list[dict]:
         return [json.loads(line) for line in f if line.strip()]
 
 
-def test_groundedness_judge_reliability(record_eval_run):
+def test_groundedness_judge_reliability(record_eval_run, assert_no_regression):
     examples = _load_golden_set()
     per_example = []
 
@@ -100,3 +100,8 @@ def test_groundedness_judge_reliability(record_eval_run):
     assert reliable_accuracy >= RELIABLE_ACCURACY_THRESHOLD, (
         f"reliable_accuracy was {reliable_accuracy:.2f}, expected >= {RELIABLE_ACCURACY_THRESHOLD}"
     )
+    # Flat thresholds (above) catch an absolute floor; this (ADR-0024)
+    # catches a real regression against the committed v1 baseline even
+    # if it's still above that floor.
+    assert_no_regression("faithfulness", model_used, consistency_rate, metric="consistency_rate")
+    assert_no_regression("faithfulness", model_used, reliable_accuracy, metric="reliable_accuracy")

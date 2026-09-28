@@ -218,6 +218,37 @@ documented rather than glossed over. Verified live against the
 running API, not just the eval: a real ticket's `reasoning` field read
 `"classified as 'feature_request' (Claude fallback); ..."`.
 
+### Prompt regression baselines (Phase 21, ADR-0024)
+
+Every `PROMPT_VERSION` in this codebase was still `"v1"` — despite 3
+real groundedness prompt rewrites (ADR-0020) and 3 real classification
+prompt variants (ADR-0022) actually being tried and measured this
+session. All 6 bypassed the versioning mechanism entirely, run as
+throwaway diagnostic scripts. A live `eval_runs`-history comparison
+(the first design considered) turned out not to work at all: CI's
+Postgres is a fresh, ephemeral service container per workflow run, so
+there's no cross-run history to query in CI ever. Fixed with a
+committed snapshot file instead (`tests/evals/regression_baseline.json`),
+seeded with the real v1 baselines already measured in ADR-0020/ADR-0022,
+checked via a small pure comparison (`tests/evals/regression.py`) with
+a 0.1 tolerance — sized from real observed cross-architecture score
+variance (~0.09 on a 12-example set), not guessed.
+
+**Demonstrated live, not just unit-tested**: temporarily swapping in
+ADR-0022's already-measured-worse classification prompt variant
+(0.500 accuracy) and running the eval — without touching the
+baseline — produced a real failure:
+```
+AssertionError: Regression detected for classification/ollama/llama3.2:1b:
+score 0.500 is below the committed baseline 0.670 (prompt_version='v1')
+by more than the tolerance.
+```
+Notably, `ACCURACY_THRESHOLD` is `0.5` and the demo variant scored
+exactly `0.500` — the existing flat-threshold assertion alone would
+have **passed** this. Only the new regression-baseline check caught
+it. `classify.py` was reverted to `v1` immediately after (`git diff`
+confirmed an exact, clean revert).
+
 ### Retrieval evals (Phases 9–13)
 
 Retrieval outgrew a single table row once recall@k gained an MRR@k
@@ -386,10 +417,11 @@ not fixed by writing this report:
   run on demand, not live per-call tracing (Langfuse or similar,
   per `project-brief.md`'s tech stack) — a bigger infra lift not yet
   scoped in.
-- **Regression baseline snapshots**: `ADR-0010` uses each eval's
-  hardcoded threshold as its own baseline; a real snapshot-per-version
-  system is deferred until there's a second prompt version per prompt
-  to actually compare against.
+- **Regression baseline snapshots**: resolved in Phase 21 (ADR-0024) —
+  see its own subsection above. Scoped to the 2 evals with real
+  prompt-variant experiment history (classification, groundedness);
+  retrieval and triage-routing stay on flat thresholds since they're
+  algorithm/threshold-driven, not prompt-driven.
 - **Golden sets are synthetic**: resolved for the retrieval eval
   specifically — Phase 11 (ADR-0014) added a real, public,
   Apache-2.0-licensed customer-support FAQ dataset (89 deduplicated

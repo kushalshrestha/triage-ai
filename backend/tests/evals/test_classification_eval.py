@@ -39,7 +39,7 @@ def load_golden_set():
         return [json.loads(line) for line in f]
 
 
-def test_classification_accuracy_meets_threshold(record_eval_run):
+def test_classification_accuracy_meets_threshold(record_eval_run, assert_no_regression):
     from app.agent.classify import PROMPT_VERSION, classify_ticket
     from app.config import get_settings
     from app.models import EvalRunType
@@ -53,11 +53,12 @@ def test_classification_accuracy_meets_threshold(record_eval_run):
 
     accuracy = correct / len(golden_set)
     passed = accuracy >= ACCURACY_THRESHOLD
+    model_used = f"ollama/{get_settings().ollama_model_name}"
 
     record_eval_run(
         run_type=EvalRunType.CLASSIFICATION,
         prompt_version=PROMPT_VERSION,
-        model_used=f"ollama/{get_settings().ollama_model_name}",
+        model_used=model_used,
         score=accuracy,
         threshold=ACCURACY_THRESHOLD,
         passed=passed,
@@ -69,3 +70,9 @@ def test_classification_accuracy_meets_threshold(record_eval_run):
         f"threshold {ACCURACY_THRESHOLD} — check for regressions "
         f"before merging."
     )
+    # Flat threshold (above) catches an absolute floor; this (ADR-0024)
+    # catches a real regression against the committed v1 baseline even
+    # if it's still above that floor — e.g. a prompt change that drops
+    # accuracy from 0.67 to 0.55 would still pass ACCURACY_THRESHOLD
+    # but is a real, worth-noticing regression.
+    assert_no_regression("classification", model_used, accuracy)
