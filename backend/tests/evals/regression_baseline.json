@@ -22,5 +22,21 @@
     "prompt_version": "v1",
     "score": 1.0,
     "note": "Real measured baseline, ADR-0020 (11-example golden set)."
+  },
+  {
+    "run_type": "judge",
+    "model_used": "ollama/llama3.2:1b",
+    "metric": "reliable_accuracy",
+    "prompt_version": "v1",
+    "score": 0.917,
+    "note": "Real measured baseline, ADR-0025 (12-example draft-quality golden set, ±1 tolerance)."
+  },
+  {
+    "run_type": "judge",
+    "model_used": "ollama/llama3.2:1b",
+    "metric": "consistency_rate",
+    "prompt_version": "v1",
+    "score": 1.0,
+    "note": "Real measured baseline, ADR-0025 (12-example draft-quality golden set)."
   }
 ]

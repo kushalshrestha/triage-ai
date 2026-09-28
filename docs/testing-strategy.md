@@ -18,10 +18,15 @@ Example: `tests/integration/test_tickets_api.py`.
 
 ## 3. Eval tests — `tests/evals/`
 The AI-specific layer. Assert against a **threshold over a fixed
-dataset**, not exact output: classification accuracy ≥ 0.90, RAG
-faithfulness ≥ 0.8, LLM-as-judge quality ≥ 4/5. A small smoke subset
-runs on every PR; the full golden set runs nightly or pre-release.
-Example: `tests/evals/test_classification_eval.py`.
+dataset**, not exact output: classification accuracy, RAG faithfulness,
+LLM-as-judge quality (illustrative example thresholds when this section
+was first written; the real, measured thresholds per eval are in
+`docs/results.md`, not repeated here since they change as golden sets
+grow). A small smoke subset runs on every PR; the full golden set runs
+nightly or pre-release. Examples: `tests/evals/test_classification_eval.py`,
+`tests/evals/test_draft_quality_eval.py` (Phase 22, ADR-0025 — the
+"LLM-as-judge quality" example this line always gestured at, finally
+built).
 
 ## 4. Adversarial / safety tests — `tests/evals/test_safety_eval.py`
 Unlike (3), these ARE deterministic pass/fail — testing the guardrail
