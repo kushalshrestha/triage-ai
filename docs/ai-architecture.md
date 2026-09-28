@@ -205,21 +205,40 @@ as placeholder text by the time you're presenting the project.
   yet with one version per prompt actually shipped.
 
 ## Evaluation framework
-- **Golden set:** size, how examples were sourced (synthetic vs. real,
-  see project-brief.md), how it's kept representative over time.
+- **Golden set:** every set is real, hand-verified data (each example
+  checked against actual model/retrieval behavior before being
+  committed, not just assumed correct) but smaller than
+  project-brief.md's "50-100 labeled tickets" target — classification
+  12, groundedness 11, draft quality 12, retrieval 12 (synthetic) + 18
+  (real corpus), triage routing 15, safety/red-team 4. Only retrieval's
+  real-corpus set (Phase 11, ADR-0014) uses external real-world data
+  (MakTek's public FAQ dataset); the rest are hand-crafted, deliberately
+  including hard/ambiguous cases rather than only easy ones. Growing
+  every set toward the "50-100" target is a known, open gap — see
+  Known limitations in `docs/results.md`.
 - **Metrics:** classification accuracy (`test_classification_eval.py`),
   retrieval recall@k and MRR@k (`test_retrieval_eval.py`), RAG
-  faithfulness/groundedness (`test_groundedness_eval.py`), triage
+  faithfulness/groundedness (`test_groundedness_eval.py`), **draft
+  quality (`test_draft_quality_eval.py`, Phase 22, ADR-0025)**, triage
   routing accuracy (`test_triage_eval.py`) — each asserts against a
   hardcoded threshold in its own test file. A run below threshold
-  fails its test and blocks CI. Classification and groundedness also
-  check against a real, committed regression-baseline snapshot
-  (`tests/evals/regression_baseline.json`, ADR-0024) — a genuinely
-  different check from the flat threshold: a prompt change can still
-  clear the flat floor while being a real regression against the
-  previously-committed score (demonstrated live in ADR-0024 — a
-  deliberately-worse variant measured exactly at the flat threshold,
-  which alone would have passed it).
+  fails its test and blocks CI. Classification, groundedness, and
+  draft quality also check against a real, committed regression-
+  baseline snapshot (`tests/evals/regression_baseline.json`, ADR-0024)
+  — a genuinely different check from the flat threshold: a prompt
+  change can still clear the flat floor while being a real regression
+  against the previously-committed score (demonstrated live in
+  ADR-0024 — a deliberately-worse variant measured exactly at the flat
+  threshold, which alone would have passed it).
+- **Draft quality judge (Phase 22, ADR-0025):** `app/agent/quality.py::assess_draft_quality`
+  — a 1-5 rating (`docs/testing-strategy.md` has named this exact
+  "LLM-as-judge quality >= 4/5" design since early in the project;
+  never built until now), evals-layer only, not wired into
+  `orchestrator.py`. Real result: **consistency_rate=1.00,
+  reliable_accuracy=0.917** (±1 tolerance) on Ollama — genuinely more
+  reliable than the groundedness judge's 0.636 (ADR-0020), the
+  opposite of what was expected going in. No Claude comparison was
+  needed as a result.
 - **Retrieval eval detail:** `tests/evals/retrieval_golden_set.jsonl`
   (12 queries as of Phase 10, up from 8) references expected answers as
   `(doc_title, doc_source, chunk_index)` tuples rather than DB chunk

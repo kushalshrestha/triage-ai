@@ -9,23 +9,24 @@ unit/integration/eval split this all sits on top of.
 
 ## Eval results
 
-Full `pytest tests/evals` run (free + costly), latest on 2026-09-22.
+Full `pytest tests/evals` run (free + costly), latest on 2026-09-28.
 The retrieval eval has grown well beyond a single row since the
 initial version of this table — it's now three separate evals
 (synthetic corpus, real corpus, contextual retrieval comparison),
 covered in its own subsection below. Groundedness outgrew a single row
 as of Phase 17 (ADR-0020), triage routing as of Phase 18 (ADR-0021),
-and classification as of Phases 19-20 (ADR-0022, ADR-0023) — see
-their own subsections. project-brief.md's review notes on sourcing
-real examples are resolved for retrieval (see Known limitations) but
-still open for classification/groundedness's hand-crafted (if now
-more diverse) golden sets.
+classification as of Phases 19-20 (ADR-0022, ADR-0023), and draft
+quality is new as of Phase 22 (ADR-0025) — see their own subsections.
+project-brief.md's review notes on sourcing real examples are resolved
+for retrieval (see Known limitations) but still open for the other
+golden sets, which are hand-crafted (if now more diverse).
 
 | Eval | Score | Threshold | n | Model(s) | Prompt version |
 |---|---|---|---|---|---|
 | Classification accuracy (Ollama only, free eval) | 0.67 (local) / 0.58 (CI) | ≥ 0.5 | 12 (real golden set, ADR-0022) | `ollama/llama3.2:1b` | v1 |
 | Classification accuracy (production: Ollama + Claude fallback) | **1.00** | ≥ 0.8 | 12 (same golden set, ADR-0023) | `ollama/llama3.2:1b` + `claude-haiku-4-5-20251001` (58% of calls) | v1 |
 | Groundedness judge reliability | 0.636 | ≥ 0.5 | 11 (real golden set, ADR-0020) | `ollama/llama3.2:1b` | v1 |
+| Draft quality judge reliability | **0.917** | ≥ 0.75 | 12 (real golden set, ADR-0025) | `ollama/llama3.2:1b` | v1 |
 | Triage routing accuracy (real corpus) | 1.00 | ≥ 0.8 | 15 (real golden set, ADR-0021) | `local/all-MiniLM-L6-v2` (routes on retrieval similarity, no model call) | n/a |
 | Triage routing, end-to-end (real Claude) | 1.00 | ≥ 0.66 | 3 | `ollama/llama3.2:1b` + `claude-haiku-4-5-20251001` | n/a |
 
@@ -249,6 +250,39 @@ have **passed** this. Only the new regression-baseline check caught
 it. `classify.py` was reverted to `v1` immediately after (`git diff`
 confirmed an exact, clean revert).
 
+### Draft quality judge (Phase 22, ADR-0025)
+
+project-brief.md's "Golden dataset + offline metrics" names "LLM-as-
+judge for draft quality" as a capability; `docs/testing-strategy.md`
+has said "LLM-as-judge quality >= 4/5" since early in the project.
+Neither had ever been built — the only judge in the system
+(`assess_groundedness`) is a binary grounded/not-grounded check, not a
+quality rating. New `app/agent/quality.py::assess_draft_quality` (1-5
+scale) plus a 12-example golden set spanning the full range, measured
+with the same "run it twice" structure as ADR-0020:
+
+| Metric | Score | Threshold |
+|---|---|---|
+| `consistency_rate` | **1.00** | ≥ 0.8 |
+| `reliable_accuracy` (±1 tolerance) | **0.917** (11/12) | ≥ 0.75 |
+
+**The opposite of what was expected**: a graded 1-5 judgment turned
+out *more* reliable for this local model than the binary groundedness
+check (0.636, ADR-0020) — a real, honestly-reported case of the
+"measure, don't assume" discipline cutting against the prior
+expectation, not confirming it. A plausible reason, not just an
+observation: quality judgments here lean on fairly surface-level
+stylistic signals (rambling text, curt/rude phrasing, warm
+professional tone) a small model can likely pattern-match on directly,
+unlike groundedness's requirement to cross-reference a specific claim
+against a specific context passage. The one miss was a defensible
+disagreement (a graceful "we don't have that feature" decline, rated 5
+here for honesty/warmth but 3 by the judge for not fulfilling the
+literal request) rather than a clear model error. No Claude comparison
+was needed — the "if Ollama shows a real ceiling" contingency this
+phase was planned around didn't trigger. Evals-layer only; not wired
+into `orchestrator.py`'s live routing.
+
 ### Retrieval evals (Phases 9–13)
 
 Retrieval outgrew a single table row once recall@k gained an MRR@k
@@ -430,8 +464,14 @@ not fixed by writing this report:
   (recall@3 = 0.94, MRR@3 = 0.92, vs. a perfect 1.0/1.0 on the
   synthetic corpus). Classification accuracy's `golden_set.jsonl`
   (grown from 5 to 12 in Phase 19, ADR-0022, after finding the
-  original was inflated by near-duplicate few-shot examples) and the
-  groundedness eval's 11-example `groundedness_golden_set.jsonl`
-  remain hand-crafted/synthetic, not sourced from real tickets — this
-  was project-brief.md's stated intent for golden-set sourcing in
-  general, and only the retrieval slice of it uses real external data.
+  original was inflated by near-duplicate few-shot examples), the
+  groundedness eval's 11-example `groundedness_golden_set.jsonl`, and
+  the new 12-example `draft_quality_golden_set.jsonl` (Phase 22,
+  ADR-0025) remain hand-crafted/synthetic, not sourced from real
+  tickets — this was project-brief.md's stated intent for golden-set
+  sourcing in general, and only the retrieval slice of it uses real
+  external data. Every golden set is also still smaller than
+  project-brief.md's "50-100 labeled tickets" target (11-18 examples
+  each) — a known, open gap, not attempted this phase in favor of
+  building the draft-quality judge mechanism itself, the more novel
+  gap of the two candidates considered.
