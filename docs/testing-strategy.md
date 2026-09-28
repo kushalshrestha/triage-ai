@@ -30,10 +30,23 @@ injection attempt got caught or it didn't. Grow this set whenever a
 new attack pattern is found.
 
 ## 5. Regression gating (CI)
-Golden-set scores get snapshotted per prompt/model version. A PR that
-drops eval scores below the last known-good baseline is blocked. This
-is the LLMOps tie-in: prompt versioning + eval gate becomes the CI
-check, not a separate process.
+Golden-set scores get snapshotted per prompt/model version
+(`tests/evals/regression_baseline.json`, ADR-0024) — a committed file,
+not a live database query: `eval_runs` doesn't persist across CI runs
+(each workflow gets a fresh, ephemeral Postgres), so a snapshot file is
+the only thing that actually survives to compare against. A PR that
+drops an eval score more than a small tolerance below the committed
+baseline is blocked — deliberately a *tolerance*, not zero, since real
+cross-architecture inference variance (ADR-0020, ADR-0022) can move a
+score by itself with no prompt change at all. Updating the baseline is
+a deliberate, human action taken in the same change as an intentional
+prompt/model update, the same way snapshot-testing tools work
+elsewhere in the industry — never auto-ratcheted by CI itself. Wired
+into `test_classification_eval.py` and `test_groundedness_eval.py` so
+far — the two evals with real prompt-variant experiment history
+(ADR-0020, ADR-0022) — not every eval; retrieval and triage-routing
+are threshold/algorithm-driven, not prompt-driven, so this doesn't
+apply to them the same way.
 
 ## 6. Load/latency tests
 p95 latency and cost per ticket type, measured separately from

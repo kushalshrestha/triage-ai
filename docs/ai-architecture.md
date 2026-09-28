@@ -192,11 +192,17 @@ as placeholder text by the time you're presenting the project.
   scripts/cost_report.py`) prints the Ollama-vs-Claude comparison
   `project-brief.md` asks for — a report generator, not a live
   dashboard (see Open questions: tracing).
-- **Prompt versioning:** each prompt (`app/agent/classify.py`,
-  `drafting.py`, `judge.py`) has a `PROMPT_VERSION` constant, recorded
-  on `eval_runs.prompt_version` every time the corresponding eval test
-  runs (ADR-0010). Not yet recorded on `agent_decisions` itself — no
-  column for it there, and not needed yet with one version per prompt.
+- **Prompt versioning (Phase 21, ADR-0024):** each prompt
+  (`app/agent/classify.py`, `drafting.py`, `judge.py`,
+  `contextualize.py`) has a `PROMPT_VERSION` constant, recorded on
+  `eval_runs.prompt_version` every eval run (ADR-0010) — but every one
+  is still `"v1"`, and every real prompt-variant experiment this
+  session (ADR-0020's 3 groundedness rewrites, ADR-0022's 3
+  classification variants) bypassed the mechanism entirely, run as
+  throwaway scripts instead. The regression-baseline snapshot below
+  closes that gap for real use going forward. Not yet recorded on
+  `agent_decisions` itself — no column for it there, and not needed
+  yet with one version per prompt actually shipped.
 
 ## Evaluation framework
 - **Golden set:** size, how examples were sourced (synthetic vs. real,
@@ -205,10 +211,15 @@ as placeholder text by the time you're presenting the project.
   retrieval recall@k and MRR@k (`test_retrieval_eval.py`), RAG
   faithfulness/groundedness (`test_groundedness_eval.py`), triage
   routing accuracy (`test_triage_eval.py`) — each asserts against a
-  hardcoded threshold in its own test file, which *is* the regression
-  baseline for now (see ADR-0010 for why a separate snapshot-file
-  system would be premature at one prompt version each). A run below
-  threshold fails its test and blocks CI.
+  hardcoded threshold in its own test file. A run below threshold
+  fails its test and blocks CI. Classification and groundedness also
+  check against a real, committed regression-baseline snapshot
+  (`tests/evals/regression_baseline.json`, ADR-0024) — a genuinely
+  different check from the flat threshold: a prompt change can still
+  clear the flat floor while being a real regression against the
+  previously-committed score (demonstrated live in ADR-0024 — a
+  deliberately-worse variant measured exactly at the flat threshold,
+  which alone would have passed it).
 - **Retrieval eval detail:** `tests/evals/retrieval_golden_set.jsonl`
   (12 queries as of Phase 10, up from 8) references expected answers as
   `(doc_title, doc_source, chunk_index)` tuples rather than DB chunk
@@ -297,9 +308,3 @@ move the resolution into an ADR.
   run on demand, not a live dashboard with per-call traces. Standing up
   real tracing is a bigger infra lift (a new service, an integration
   point in every model call site) than any pass so far has scoped in.
-- **Regression baseline snapshots:** ADR-0010 argues each eval's
-  hardcoded threshold already serves as its baseline while there's only
-  one prompt version each. Revisit — a committed snapshot file per
-  `testing-strategy.md` layer 5 — once prompt iteration actually starts
-  happening and "did this PR regress vs. the last known-good version"
-  becomes a real question, not a hypothetical one.

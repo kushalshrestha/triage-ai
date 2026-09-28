@@ -1,0 +1,26 @@
+[
+  {
+    "run_type": "classification",
+    "model_used": "ollama/llama3.2:1b",
+    "metric": null,
+    "prompt_version": "v1",
+    "score": 0.67,
+    "note": "Real measured baseline, ADR-0022 (12-example golden set, local arm64)."
+  },
+  {
+    "run_type": "faithfulness",
+    "model_used": "ollama/llama3.2:1b",
+    "metric": "reliable_accuracy",
+    "prompt_version": "v1",
+    "score": 0.636,
+    "note": "Real measured baseline, ADR-0020 (11-example golden set)."
+  },
+  {
+    "run_type": "faithfulness",
+    "model_used": "ollama/llama3.2:1b",
+    "metric": "consistency_rate",
+    "prompt_version": "v1",
+    "score": 1.0,
+    "note": "Real measured baseline, ADR-0020 (11-example golden set)."
+  }
+]
