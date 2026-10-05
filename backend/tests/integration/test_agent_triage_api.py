@@ -338,3 +338,45 @@ def test_citing_a_weaker_chunk_downgrades_auto_respond(client: TestClient, db_se
     citation_check = next(c for c in checks if c.check_type == GuardrailCheckType.CITATION_CONFIDENCE)
     assert citation_check.passed is False
     assert citation_check.details["min_cited_similarity"] < 0.8
+
+
+def test_pii_in_ticket_is_redacted_before_reaching_drafting(
+    client: TestClient, db_session: Session, monkeypatch
+):
+    """ADR-0027: orchestrator.py redacted PII for retrieval/classification
+    but passed the raw Ticket straight into generate_draft(), which
+    built its Claude prompt from unredacted subject/body — a real PII
+    leak to a third-party API that the PII_REDACTION GuardrailCheck row
+    looked like it had already covered. generate_draft() now takes
+    `subject`/`body` strings directly (no Ticket access at all), so the
+    only way to check this is inspecting what the caller actually
+    passed — which is exactly what this test does.
+    """
+    monkeypatch.setattr(orchestrator, "classify_ticket_with_fallback", MagicMock(return_value=("account", False)))
+    monkeypatch.setattr(orchestrator, "assess_groundedness", MagicMock(return_value=(True, "verdict: grounded")))
+    mock_draft = MagicMock(
+        return_value=(
+            DraftOutput(reply_text="Here's how to reset your password: ...", cited_chunk_indices=[0]),
+            ClaudeUsage(input_tokens=120, output_tokens=40),
+        )
+    )
+    monkeypatch.setattr(orchestrator, "generate_draft", mock_draft)
+
+    staff_token = _make_staff_user(db_session, "triage-agent-pii@example.com")
+    ingest_document(db_session, title="Password Reset FAQ", source="faq", content=PASSWORD_RESET_DOC)
+
+    customer_token = _register_customer(client, "pii-redaction-customer@example.com")
+    ticket = _create_ticket(
+        client,
+        customer_token,
+        "Forgot my password",
+        "I can't remember my password, email me at jane.doe@example.com when it's reset.",
+    )
+
+    response = client.post(f"/tickets/{ticket['id']}/triage", headers=_auth_header(staff_token))
+    assert response.status_code == 201
+
+    sent_subject, sent_body = mock_draft.call_args.args[0], mock_draft.call_args.args[1]
+    assert "jane.doe@example.com" not in sent_subject
+    assert "jane.doe@example.com" not in sent_body
+    assert "[REDACTED_EMAIL]" in sent_body

@@ -432,6 +432,25 @@ emails, phone numbers, credit-card-like digit runs. Deliberately simple
 to start, same philosophy as injection detection; a classifier upgrade
 is an open question, not yet built.
 
+### PII redaction leak into drafting (Phase 24, ADR-0027)
+
+A real, confirmed bug, found while auditing Input guardrails: redaction
+was applied before retrieval and classification, but `generate_draft()`
+built its Claude prompt from the raw `Ticket` object — any PII in a
+ticket reached Claude's hosted API unredacted, even though the
+`PII_REDACTION` `GuardrailCheck` row for that ticket recorded as
+passed. Fixed structurally: `generate_draft()` no longer has access to
+raw ticket fields at all, only already-redacted `subject`/`body`
+strings supplied by the one caller that has `redact_pii` in scope. A
+new integration test (`test_pii_in_ticket_is_redacted_before_reaching_drafting`)
+creates a ticket with a real email address and asserts the mocked
+Claude call receives `[REDACTED_EMAIL]`, not the raw address — the
+direct regression test this bug needed and didn't have. Confirmed via
+code audit, not assumed, to be the *only* such leak in the production
+path; `app/agent/quality.py`'s eval-only judge has the same pattern but
+is noted as a deliberately out-of-scope, lower-risk exception (no real
+PII in its synthetic golden set).
+
 ## Cost / latency comparison
 
 Real `scripts/cost_report.py` output, originally run 2026-09-14,

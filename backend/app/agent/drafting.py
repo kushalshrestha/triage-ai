@@ -4,7 +4,6 @@ from anthropic import Anthropic
 from pydantic import BaseModel, ValidationError
 
 from app.config import get_settings
-from app.models import Ticket
 
 PROMPT_VERSION = "v1"
 
@@ -70,8 +69,13 @@ class DraftSchemaError(Exception):
 
 
 def generate_draft(
-    ticket: Ticket, context_chunks: list[str], account_context: dict
+    subject: str, body: str, context_chunks: list[str], account_context: dict
 ) -> tuple[DraftOutput, ClaudeUsage]:
+    """`subject`/`body` must already be PII-redacted by the caller (see
+    ADR-0027) — this function has no access to a raw `Ticket`, by
+    design, so it can't accidentally send unredacted ticket text to
+    Claude the way it once did.
+    """
     settings = get_settings()
     client = Anthropic(api_key=settings.anthropic_api_key)
 
@@ -84,8 +88,8 @@ def generate_draft(
         f"Customer account: {account_context['prior_ticket_count']} prior ticket(s), "
         f"account age {account_context['account_age_days']} day(s).\n\n"
         f"Context (indexed):\n{context_block}\n\n"
-        f"Ticket subject: {ticket.subject}\n"
-        f"Ticket body: {ticket.body}\n\n"
+        f"Ticket subject: {subject}\n"
+        f"Ticket body: {body}\n\n"
         f"Call submit_draft with your reply."
     )
 
