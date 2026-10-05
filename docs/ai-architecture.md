@@ -296,6 +296,20 @@ as placeholder text by the time you're presenting the project.
 - **Input side:** injection detection (`app/guardrails/injection.py`)
   and PII redaction (`app/guardrails/pii.py`) — both pattern-based;
   document if/when either moves to a classifier.
+  **Fixed (Phase 24, ADR-0027):** PII redaction was applied before
+  retrieval/classification but not before the Claude drafting call —
+  `generate_draft()` took the raw `Ticket` object and built its prompt
+  from unredacted `subject`/`body`, so any PII in a ticket reached
+  Claude's hosted API unredacted despite a `PII_REDACTION`
+  `GuardrailCheck` row recording as passed for that ticket. Fixed
+  structurally, not by patching the one call site: `generate_draft()`
+  no longer takes a `Ticket` at all, only already-redacted
+  `subject`/`body` strings — there's no raw field left in that
+  function to leak. New tests assert the Claude client actually
+  receives the redacted text, closing the test gap (neither
+  `test_drafting.py` nor `test_agent_triage_api.py` had ever inspected
+  what was sent to the mocked/real Claude call) that let this go
+  uncaught through Phases 9-23.
 - **Output side:** schema validation via forced Claude tool-use
   (`app/agent/drafting.py`'s `submit_draft` tool + Pydantic
   `DraftOutput`) — a malformed draft escalates the ticket outright

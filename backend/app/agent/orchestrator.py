@@ -93,7 +93,9 @@ def run_triage(db: Session, ticket: Ticket) -> AgentDecision:
         db.refresh(decision)
         return decision
 
-    redacted_text = redact_pii(raw_text)
+    redacted_subject = redact_pii(ticket.subject)
+    redacted_body = redact_pii(ticket.body)
+    redacted_text = f"{redacted_subject}\n{redacted_body}"
     db.add(
         GuardrailCheck(
             ticket_id=ticket.id,
@@ -139,7 +141,9 @@ def run_triage(db: Session, ticket: Ticket) -> AgentDecision:
             models_used.append(settings.claude_model_name)
 
         try:
-            draft, claude_usage = generate_draft(ticket, context_texts, account_context)
+            draft, claude_usage = generate_draft(
+                redacted_subject, redacted_body, context_texts, account_context
+            )
             schema_valid = True
         except DraftSchemaError as exc:
             schema_valid = False
