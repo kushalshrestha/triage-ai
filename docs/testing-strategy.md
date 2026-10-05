@@ -34,6 +34,19 @@ layer around the model, not the model's free-form output. Either the
 injection attempt got caught or it didn't. Grow this set whenever a
 new attack pattern is found.
 
+As of Phase 23 (ADR-0026), the golden set (`safety_golden_set.jsonl`)
+is categorized: `direct` and `false_positive` must stay 100% correct;
+`evasion` and `semantic_hijack` are intentionally-failing regression
+markers (0% caught, measured and documented, not aspirational
+targets) — a keyword-based guardrail fundamentally can't catch trivial
+paraphrases or pure social engineering, and pretending otherwise with a
+padded threshold would hide that rather than surface it. The real
+mitigation for what this layer misses is a separate, costly,
+nightly-only eval, `test_defense_in_depth_eval.py`, proving the
+*system* (retrieval-threshold routing + citation-scoped groundedness)
+still can't be tricked into an unauthorized `auto_respond` even when
+this input-layer check is bypassed.
+
 ## 5. Regression gating (CI)
 Golden-set scores get snapshotted per prompt/model version
 (`tests/evals/regression_baseline.json`, ADR-0024) — a committed file,
