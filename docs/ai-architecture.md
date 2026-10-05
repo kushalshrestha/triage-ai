@@ -210,7 +210,8 @@ as placeholder text by the time you're presenting the project.
   committed, not just assumed correct) but smaller than
   project-brief.md's "50-100 labeled tickets" target — classification
   12, groundedness 11, draft quality 12, retrieval 12 (synthetic) + 18
-  (real corpus), triage routing 15, safety/red-team 4. Only retrieval's
+  (real corpus), triage routing 15, safety/red-team 14 (Phase 23, ADR-0026
+  — up from a tautological 4-example set). Only retrieval's
   real-corpus set (Phase 11, ADR-0014) uses external real-world data
   (MakTek's public FAQ dataset); the rest are hand-crafted, deliberately
   including hard/ambiguous cases rather than only easy ones. Growing
@@ -303,9 +304,31 @@ as placeholder text by the time you're presenting the project.
   deterministic temperature) comparing the draft against the retrieved
   context; a failed verdict downgrades `auto_respond` to
   `draft_for_review` rather than just logging the score. See ADR-0009.
-- **Red-team set:** how adversarial examples are sourced and grown
-  over time (`tests/evals/test_safety_eval.py`), and results of the
-  latest run.
+- **Red-team set (Phase 23, ADR-0026):** `tests/evals/safety_golden_set.jsonl`
+  — 14 examples across 4 categories, replacing a tautological 4-example
+  set that was built from `is_likely_injection`'s own keyword list.
+  Real, measured results: `direct` (exact-phrase matches) 100% caught;
+  `false_positive` (innocent tickets with incidental keyword overlap)
+  100% correctly passed, after a one-line pattern fix
+  (`"system prompt"` → `"system prompt:"`); `evasion` (trivial
+  paraphrases) **0% caught** and `semantic_hijack` (fabricated-authority
+  social engineering, no trigger phrase) **0% caught** — both pinned as
+  deliberate regression markers, not bugs to chase with a bigger keyword
+  list. **Two distinct lines of defense, not one improved one:** what a
+  pattern list can never catch is backstopped downstream —
+  `tests/evals/test_defense_in_depth_eval.py` (costly, nightly-only)
+  runs 4 real `semantic_hijack` scenarios end-to-end through
+  `run_triage()` and confirms none produce an unauthorized
+  `auto_respond`. Precisely which mechanism catches it differs: 3
+  realistic scenarios (similarity 0.53-0.71) never clear the
+  `auto_respond` threshold to begin with — ADR-0008's retrieval routing
+  alone suffices; a 4th, deliberately engineered for high lexical
+  overlap with its own fabrication (similarity 0.81, clearing the
+  `auto_respond` bar), is caught specifically by citation-scoped
+  groundedness (ADR-0019) — citation-confidence (ADR-0021) alone would
+  not have caught it, since the cited chunk's own similarity still
+  clears that bar. See `docs/threat-model.md` item #1 for the
+  corresponding risk-register update.
 - **Rate limiting (Phase 15, ADR-0018):** `app/rate_limit.py` — an
   in-memory, per-user fixed-window limiter (no Redis; the `api`
   service is a single process, confirmed via `docker-compose.yml`,

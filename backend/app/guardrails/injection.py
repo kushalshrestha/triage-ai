@@ -10,7 +10,10 @@ INJECTION_PATTERNS = [
     "ignore prior instructions",
     "disregard the above",
     "you are now",
-    "system prompt",
+    # Trailing colon required (ADR-0026): a bare "system prompt" false-
+    # positives on innocent tickets mentioning a device's own prompt/UI
+    # (e.g. "my thermostat's system prompt keeps asking for a PIN").
+    "system prompt:",
     "act as if",
 ]
 
