@@ -23,6 +23,7 @@ it couldn't confidently answer.
 import logging
 from typing import Literal
 
+import httpx
 from anthropic import Anthropic
 
 from app.agent.ollama_client import generate
@@ -128,8 +129,16 @@ def classify_ticket_with_fallback(text: str) -> tuple[str, bool]:
     real model usage/cost accurately — a fallback call is a real
     Claude API call even when it doesn't lead to a drafted reply.
     """
-    raw = generate(_OLLAMA_PROMPT_TEMPLATE.format(text=text))
-    category = _match_category(raw)
+    try:
+        raw = generate(_OLLAMA_PROMPT_TEMPLATE.format(text=text))
+        category = _match_category(raw)
+    except httpx.HTTPError:
+        # An unreachable/timed-out Ollama is treated exactly like an
+        # unparseable answer (see ADR-0028) — falls through to the same
+        # Claude-fallback path below rather than crashing the request.
+        logger.exception("Ollama classification call failed; falling back to Claude")
+        category = None
+
     if category is not None:
         return category, False
 

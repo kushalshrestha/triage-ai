@@ -19,7 +19,9 @@ from unittest.mock import MagicMock
 
 from types import SimpleNamespace
 
+import httpx
 import pytest
+from anthropic import APIConnectionError
 
 from app.agent import drafting
 from app.agent.drafting import DraftSchemaError, generate_draft
@@ -72,6 +74,20 @@ def test_prompt_uses_exactly_the_passed_in_subject_and_body(monkeypatch):
     sent_message = client.messages.create.call_args.kwargs["messages"][0]["content"]
     assert "[REDACTED_EMAIL] follow-up" in sent_message
     assert "Please email me at [REDACTED_EMAIL]." in sent_message
+
+
+def test_api_connection_failure_raises_draft_schema_error(monkeypatch):
+    """ADR-0028: an unreachable/erroring Claude API must be treated the
+    same as a malformed response (DraftSchemaError, caught by
+    orchestrator.py to force an escalation) rather than propagating an
+    uncaught anthropic.APIError and crashing the whole triage request.
+    """
+    client = MagicMock()
+    client.messages.create.side_effect = APIConnectionError(request=httpx.Request("POST", "https://api.anthropic.com"))
+    monkeypatch.setattr(drafting, "Anthropic", MagicMock(return_value=client))
+
+    with pytest.raises(DraftSchemaError, match="Claude drafting call failed"):
+        generate_draft(SUBJECT, BODY, ["Password reset instructions."], ACCOUNT_CONTEXT)
 
 
 def test_out_of_range_citation_raises(monkeypatch):
