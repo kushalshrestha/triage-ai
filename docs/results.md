@@ -451,6 +451,30 @@ path; `app/agent/quality.py`'s eval-only judge has the same pattern but
 is noted as a deliberately out-of-scope, lower-risk exception (no real
 PII in its synthetic golden set).
 
+### Resilience to model-call failures (Phase 25, ADR-0028)
+
+Auditing Output guardrails ("confidence-based escalation") found all 3
+model-call sites handled bad *output* (unparseable text, a malformed
+tool call) but not the call itself *failing* — an unreachable Ollama
+or an erroring/rate-limited Claude API raised uncaught, crashing the
+whole triage request with a 500 instead of the system failing safe.
+Fixed by catching each failure at its call site and translating it
+into the same shape as an already-handled bad-output case:
+
+| Call site | On failure | Reuses existing path |
+|---|---|---|
+| Ollama classification | Falls back to Claude | Same as an unparseable Ollama answer (ADR-0023) |
+| Groundedness judge | Treated as not grounded | Same as an empty judge response |
+| Claude drafting | Raises `DraftSchemaError` → escalate | Same as a malformed tool call (ADR-0009) |
+
+`orchestrator.py` needed zero changes — its existing bad-output
+handling was already the correct "model unreachable" handling too,
+once the failure reached it in the same shape. New unit tests
+(`test_classify.py`, the new `test_judge.py`, `test_drafting.py`)
+confirm each translation directly; no new integration tests were
+needed since the orchestrator-level behavior for each safe outcome was
+already proven by existing tests.
+
 ## Cost / latency comparison
 
 Real `scripts/cost_report.py` output, originally run 2026-09-14,

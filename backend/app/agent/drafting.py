@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from anthropic import Anthropic
+from anthropic import Anthropic, APIError
 from pydantic import BaseModel, ValidationError
 
 from app.config import get_settings
@@ -93,14 +93,22 @@ def generate_draft(
         f"Call submit_draft with your reply."
     )
 
-    message = client.messages.create(
-        model=settings.claude_model_name,
-        max_tokens=500,
-        system=_SYSTEM_PROMPT,
-        tools=[_DRAFT_TOOL],
-        tool_choice={"type": "tool", "name": "submit_draft"},
-        messages=[{"role": "user", "content": user_message}],
-    )
+    try:
+        message = client.messages.create(
+            model=settings.claude_model_name,
+            max_tokens=500,
+            system=_SYSTEM_PROMPT,
+            tools=[_DRAFT_TOOL],
+            tool_choice={"type": "tool", "name": "submit_draft"},
+            messages=[{"role": "user", "content": user_message}],
+        )
+    except APIError as exc:
+        # An unreachable/rate-limited/erroring Claude API is treated as
+        # a draft-schema failure (see ADR-0028) — reuses the existing
+        # escalate-on-DraftSchemaError path in orchestrator.py rather
+        # than crashing the whole triage request. No usage info is
+        # available since the call never completed.
+        raise DraftSchemaError(f"Claude drafting call failed: {exc}") from exc
     usage = ClaudeUsage(
         input_tokens=message.usage.input_tokens, output_tokens=message.usage.output_tokens
     )

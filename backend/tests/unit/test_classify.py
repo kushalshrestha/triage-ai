@@ -4,6 +4,8 @@ are pure/deterministic once the model calls are mocked — see ADR-0022
 """
 from unittest.mock import MagicMock
 
+import httpx
+
 from app.agent import classify
 from app.agent.classify import DEFAULT_CATEGORY, _match_category, classify_ticket_with_fallback
 
@@ -39,6 +41,23 @@ def test_fallback_calls_claude_when_ollama_output_is_unparseable(monkeypatch):
     monkeypatch.setattr(classify, "_classify_ticket_claude", claude_mock)
 
     category, used_fallback = classify_ticket_with_fallback("some ambiguous ticket text")
+
+    assert category == "account"
+    assert used_fallback is True
+    claude_mock.assert_called_once()
+
+
+def test_fallback_calls_claude_when_ollama_is_unreachable(monkeypatch):
+    """ADR-0028: an unreachable/timed-out Ollama is treated the same as
+    an unparseable answer, not left to crash the request.
+    """
+    monkeypatch.setattr(
+        classify, "generate", MagicMock(side_effect=httpx.ConnectError("Ollama down"))
+    )
+    claude_mock = MagicMock(return_value="account")
+    monkeypatch.setattr(classify, "_classify_ticket_claude", claude_mock)
+
+    category, used_fallback = classify_ticket_with_fallback("some ticket text")
 
     assert category == "account"
     assert used_fallback is True

@@ -318,6 +318,19 @@ as placeholder text by the time you're presenting the project.
   deterministic temperature) comparing the draft against the retrieved
   context; a failed verdict downgrades `auto_respond` to
   `draft_for_review` rather than just logging the score. See ADR-0009.
+  **Fixed (Phase 25, ADR-0028):** all 3 model-call sites (Ollama
+  classification, this groundedness judge, Claude drafting) handled
+  bad *output* but not the call itself *failing* — an unreachable
+  Ollama or erroring Claude API raised uncaught, crashing the whole
+  `/tickets/{id}/triage` request with a 500 instead of the system
+  failing safe. Fixed by catching each failure at its call site and
+  translating it into the same shape as an already-handled bad-output
+  case (Ollama-down → Claude fallback, same as an unparseable answer;
+  judge-down → treated as not-grounded, same as an empty response;
+  Claude-down → `DraftSchemaError`, same as a malformed tool call) —
+  `orchestrator.py` needed zero changes, since its existing bad-output
+  handling turned out to already be the correct fix once the failure
+  reached it in the same shape.
 - **Red-team set (Phase 23, ADR-0026):** `tests/evals/safety_golden_set.jsonl`
   — 14 examples across 4 categories, replacing a tautological 4-example
   set that was built from `is_likely_injection`'s own keyword list.
