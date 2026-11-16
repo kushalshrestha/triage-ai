@@ -159,8 +159,15 @@ def run_triage(db: Session, ticket: Ticket) -> AgentDecision:
             # happens to support it. generate_draft() guarantees
             # cited_chunk_indices is non-empty whenever context_texts is.
             cited_texts = [context_texts[i] for i in draft.cited_chunk_indices]
+            # provider="claude", not the module default — see ADR-0029:
+            # measured 1.00 reliable_accuracy vs Ollama's 0.636, and
+            # every one of Ollama's errors was a false positive (said
+            # "grounded" when it wasn't) — the one direction that's
+            # actually dangerous for an auto_respond-gating guardrail.
+            # Marginal cost only: this ticket already paid for a Claude
+            # drafting call to reach this point.
             groundedness_passed, groundedness_raw = assess_groundedness(
-                draft.reply_text, cited_texts
+                draft.reply_text, cited_texts, provider="claude"
             )
             if not groundedness_passed and decision_type == DecisionType.AUTO_RESPOND:
                 decision_type = DecisionType.DRAFT_FOR_REVIEW
