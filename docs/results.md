@@ -457,6 +457,37 @@ emails, phone numbers, credit-card-like digit runs. Deliberately simple
 to start, same philosophy as injection detection; a classifier upgrade
 is an open question, not yet built.
 
+### Injection detection classifier (Phase 28, ADR-0031)
+
+Added a real, pre-trained prompt-injection classifier
+(`protectai/deberta-v3-base-prompt-injection-v2`) as an opt-in
+alternative to the pattern list, measured against the golden set grown
+from 14 to 26 examples — a new `realistic_benign` category (12
+ordinary, non-adversarial tickets) was added specifically because
+every existing category was adversarial-flavored, including
+`false_positive`, which only tested *incidental keyword overlap*, not
+genuinely ordinary traffic.
+
+| Category | Pattern-only (production) | Classifier enabled |
+|---|---|---|
+| `direct` | 100% | 100% |
+| `evasion` | 0% | **100%** |
+| `false_positive` | 100% | 100% |
+| `semantic_hijack` | 0% | **100%** (unexpected — no injection-style phrasing at all) |
+| `realistic_benign` | 100% | **83%** (10/12) |
+
+The `realistic_benign` misses are both "send/email X to me" phrasing —
+a shape real exfiltration attacks also commonly take, and the
+classifier scores these (0.987-1.000) in the exact same range as
+genuine attacks, so no confidence threshold can separate them. Given
+this real cost (every false positive skips the whole AI pipeline via
+immediate escalation) against the real gain (closing two genuine
+0%-caught gaps), the classifier is kept **opt-in, off by default** —
+`orchestrator.py` is unaffected. Same treatment this project already
+gave hybrid search, contextual retrieval, and cross-encoder
+re-ranking: implemented, measured, not force-enabled because the
+numbers say so.
+
 ### PII redaction leak into drafting (Phase 24, ADR-0027)
 
 A real, confirmed bug, found while auditing Input guardrails: redaction

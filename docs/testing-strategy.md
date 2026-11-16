@@ -47,6 +47,17 @@ nightly-only eval, `test_defense_in_depth_eval.py`, proving the
 still can't be tricked into an unauthorized `auto_respond` even when
 this input-layer check is bypassed.
 
+As of Phase 28 (ADR-0031), an opt-in classifier closes the `evasion`/
+`semantic_hijack` gaps when enabled (0%→100% each), measured in a
+separate `test_injection_classifier_comparison_eval.py` against a new
+`realistic_benign` category (ordinary, non-adversarial tickets —
+previously absent from this golden set entirely, since every other
+category is adversarial-flavored). That category is what surfaced the
+classifier's real cost (a ~17% false-positive rate with no threshold
+able to fix it) and is why it stays opt-in rather than becoming the
+new default — `test_safety_eval.py` itself still tests the production
+(pattern-only) configuration and is unchanged by this.
+
 ## 5. Regression gating (CI)
 Golden-set scores get snapshotted per prompt/model version
 (`tests/evals/regression_baseline.json`, ADR-0024) — a committed file,

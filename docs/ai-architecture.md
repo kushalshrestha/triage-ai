@@ -299,8 +299,24 @@ as placeholder text by the time you're presenting the project.
 
 ## Guardrails and safety
 - **Input side:** injection detection (`app/guardrails/injection.py`)
-  and PII redaction (`app/guardrails/pii.py`) — both pattern-based;
-  document if/when either moves to a classifier.
+  and PII redaction (`app/guardrails/pii.py`) — both pattern-based by
+  default. **Injection classifier added (Phase 28, ADR-0031):**
+  `is_likely_injection(text, use_classifier=True)` — a real,
+  pre-trained prompt-injection model
+  (`protectai/deberta-v3-base-prompt-injection-v2`, local via
+  `transformers`), OR'd with the pattern list. Measured real numbers
+  on the categorized safety golden set (now 26 examples, up from 14):
+  closes `evasion` and `semantic_hijack` from 0%→100% each, but a new
+  `realistic_benign` category (ordinary, non-adversarial tickets —
+  previously missing from the golden set entirely) measured a ~17%
+  false-positive rate with no confidence threshold able to separate it
+  from genuine attacks. Kept **opt-in, off by default** as a result —
+  same treatment as hybrid search/contextual retrieval/re-ranking
+  (ADR-0013/0015/0016): correctly implemented and rigorously measured,
+  not proven net-beneficial enough to enable by default yet.
+  `orchestrator.py` is unaffected (calls with the default). PII
+  redaction's classifier upgrade (Presidio) remains a separate, later,
+  unscoped phase — a different ML stack (NER vs. text classification).
   **Fixed (Phase 24, ADR-0027):** PII redaction was applied before
   retrieval/classification but not before the Claude drafting call —
   `generate_draft()` took the raw `Ticket` object and built its prompt
