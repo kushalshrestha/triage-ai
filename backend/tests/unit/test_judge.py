@@ -40,7 +40,10 @@ def test_grounded_reply_passes(monkeypatch):
 
 def _mock_claude_client(tool_input: dict) -> MagicMock:
     tool_use_block = SimpleNamespace(type="tool_use", input=tool_input)
-    response = SimpleNamespace(content=[tool_use_block])
+    response = SimpleNamespace(
+        usage=SimpleNamespace(input_tokens=50, output_tokens=5),
+        content=[tool_use_block],
+    )
     client = MagicMock()
     client.messages.create.return_value = response
     return client
@@ -81,7 +84,9 @@ def test_claude_ungrounded_verdict_parses(monkeypatch):
 
 def test_claude_missing_tool_call_treated_as_not_grounded(monkeypatch):
     client = MagicMock()
-    client.messages.create.return_value = SimpleNamespace(content=[])
+    client.messages.create.return_value = SimpleNamespace(
+        usage=SimpleNamespace(input_tokens=50, output_tokens=0), content=[]
+    )
     monkeypatch.setattr(judge, "Anthropic", MagicMock(return_value=client))
 
     grounded, raw = assess_groundedness("Some reply.", ["Some context."], provider="claude")
