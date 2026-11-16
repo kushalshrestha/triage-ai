@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     triage_rate_limit_per_minute: int = 5
     knowledge_ingest_rate_limit_per_minute: int = 20
     knowledge_search_rate_limit_per_minute: int = 30
+    # See ADR-0031 — real measured threshold (0.9697 false-positive
+    # score vs. 0.9807 lowest real-attack score on the safety golden
+    # set), not guessed in advance.
+    injection_classifier_model_name: str = "protectai/deberta-v3-base-prompt-injection-v2"
+    injection_classifier_threshold: float = 0.97
 
 
 @lru_cache
