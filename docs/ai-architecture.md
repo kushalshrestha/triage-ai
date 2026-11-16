@@ -290,7 +290,12 @@ as placeholder text by the time you're presenting the project.
   triggered by a real CI failure (a Phase 16 eval case passed 5/5
   locally on arm64 but failed once on CI's x86_64 runner at
   `temperature: 0`) — cross-architecture nondeterminism in quantized
-  model inference, not a code bug.
+  model inference, not a code bug. **Follow-up (Phase 26, ADR-0029):**
+  Claude measured a perfect 1.00 on both metrics against the same
+  golden set, with every one of Ollama's errors being a false
+  positive — production now uses Claude for this one check (see
+  Guardrails and safety, below); `llama3.2:1b` stays the default for
+  every other judge/classifier in this project.
 
 ## Guardrails and safety
 - **Input side:** injection detection (`app/guardrails/injection.py`)
@@ -314,10 +319,22 @@ as placeholder text by the time you're presenting the project.
   (`app/agent/drafting.py`'s `submit_draft` tool + Pydantic
   `DraftOutput`) — a malformed draft escalates the ticket outright
   rather than surfacing a broken reply. Groundedness is a second,
-  independent Ollama call (`app/agent/judge.py::assess_groundedness`,
-  deterministic temperature) comparing the draft against the retrieved
-  context; a failed verdict downgrades `auto_respond` to
-  `draft_for_review` rather than just logging the score. See ADR-0009.
+  independent check (`app/agent/judge.py::assess_groundedness`)
+  comparing the draft against the retrieved context; a failed verdict
+  downgrades `auto_respond` to `draft_for_review` rather than just
+  logging the score. See ADR-0009. **As of Phase 26 (ADR-0029), this
+  check runs on Claude (`provider="claude"`), not Ollama** — measured
+  a perfect 1.00 reliable_accuracy vs. Ollama's 0.636 (ADR-0020) on the
+  same golden set, and critically, 100% of Ollama's errors were false
+  positives (said "grounded" when it wasn't), the one direction that
+  actually matters for a guardrail gating an automatic customer-facing
+  action. Scoped to this one call site only: classification
+  (ADR-0023), the draft quality judge (ADR-0025), and contextual
+  retrieval (ADR-0015) all keep their Ollama defaults, each
+  independently justified on its own measurements —
+  `app/agent/judge.py` still supports `provider="ollama"` (the
+  default, used by `test_groundedness_eval.py`'s reliability study)
+  for exactly that reason.
   **Fixed (Phase 25, ADR-0028):** all 3 model-call sites (Ollama
   classification, this groundedness judge, Claude drafting) handled
   bad *output* but not the call itself *failing* — an unreachable

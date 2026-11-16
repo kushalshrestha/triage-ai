@@ -25,7 +25,8 @@ golden sets, which are hand-crafted (if now more diverse).
 |---|---|---|---|---|---|
 | Classification accuracy (Ollama only, free eval) | 0.67 (local) / 0.58 (CI) | ≥ 0.5 | 12 (real golden set, ADR-0022) | `ollama/llama3.2:1b` | v1 |
 | Classification accuracy (production: Ollama + Claude fallback) | **1.00** | ≥ 0.8 | 12 (same golden set, ADR-0023) | `ollama/llama3.2:1b` + `claude-haiku-4-5-20251001` (58% of calls) | v1 |
-| Groundedness judge reliability | 0.636 | ≥ 0.5 | 11 (real golden set, ADR-0020) | `ollama/llama3.2:1b` | v1 |
+| Groundedness judge reliability (Ollama, free eval) | 0.636 | ≥ 0.5 | 11 (real golden set, ADR-0020) | `ollama/llama3.2:1b` | v1 |
+| Groundedness judge reliability (production: Claude) | **1.00** | n/a (comparison only, ADR-0029) | 11 (same golden set) | `claude-haiku-4-5-20251001` | v1 |
 | Draft quality judge reliability | **0.917** | ≥ 0.75 | 12 (real golden set, ADR-0025) | `ollama/llama3.2:1b` | v1 |
 | Triage routing accuracy (real corpus) | 1.00 | ≥ 0.8 | 15 (real golden set, ADR-0021) | `local/all-MiniLM-L6-v2` (routes on retrieval similarity, no model call) | n/a |
 | Triage routing, end-to-end (real Claude) | 1.00 | ≥ 0.66 | 3 | `ollama/llama3.2:1b` + `claude-haiku-4-5-20251001` | n/a |
@@ -111,6 +112,30 @@ against the same golden set before touching production code — 0.45,
 capability ceiling of this local 1B model on this task, not a
 fixable prompt. Kept as-is; documented plainly rather than either
 hidden or over-corrected.
+
+### Groundedness judge model comparison (Phase 26, ADR-0029)
+
+The deferred follow-up named above: measured Claude against the same
+golden set.
+
+| Provider | `consistency_rate` | `reliable_accuracy` |
+|---|---|---|
+| `ollama/llama3.2:1b` | 0.909 | 0.636 |
+| `claude-haiku-4-5-20251001` | **1.00** | **1.00** |
+
+A real, meaningful gap — Claude closed it entirely. The deciding
+detail wasn't just the aggregate score: inspecting Ollama's 4 wrong
+examples, every single one was a false positive (said "grounded" when
+it wasn't), zero false negatives. For a guardrail gating `auto_respond`,
+that's the dangerous direction — a false positive is what could let an
+ungrounded reply ship automatically; a false negative only costs an
+unnecessary downgrade. `orchestrator.py`'s groundedness check now runs
+on Claude (`provider="claude"`) as a result — scoped to this one call
+site, since this ticket already paid for a Claude drafting call to
+reach this point. Classification, the draft quality judge, and
+contextual retrieval all keep their Ollama defaults; each was
+independently justified on its own measurements (ADR-0022, ADR-0025,
+ADR-0015).
 
 ### Triage routing accuracy (Phase 18, ADR-0021)
 
