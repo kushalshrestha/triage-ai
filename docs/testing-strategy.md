@@ -81,6 +81,18 @@ apply to them the same way.
 p95 latency and cost per ticket type, measured separately from
 correctness, split by Ollama vs. Claude routing.
 
+## 7. Tracing (Phase 27, ADR-0030)
+OpenTelemetry instrumentation (`app/tracing.py`, span wrapping in
+`ollama_client.py`, `classify.py`, `judge.py`, `drafting.py`,
+`quality.py`, `rag/contextualize.py`, `orchestrator.py`) is verified by
+a real captured trace in Jaeger, not unit tests — same reasoning as
+`ollama_client.py`'s own raw HTTP call, which has never been
+unit-tested either: it's wiring, not logic. A real version-
+compatibility bug (`opentelemetry-instrumentation-fastapi` vs. this
+project's `starlette` version) only surfaced when actually exercising
+the instrumentation against real requests, confirming that a plain
+import check isn't sufficient verification for this layer.
+
 ## What NOT to do
 Don't try to unit-test raw model output with exact-match assertions —
 it will be flaky by construction and teaches the wrong lesson about

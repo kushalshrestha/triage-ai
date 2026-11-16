@@ -16,6 +16,7 @@ from anthropic import Anthropic
 
 from app.agent.ollama_client import generate
 from app.config import get_settings
+from app.tracing import tracer
 
 PROMPT_VERSION = "v1"
 
@@ -94,14 +95,19 @@ def _assess_groundedness_claude(reply_text: str, context: str) -> tuple[bool, st
     # comparison and quality.py's enum-constrained rating.
     settings = get_settings()
     client = Anthropic(api_key=settings.anthropic_api_key)
-    message = client.messages.create(
-        model=settings.claude_model_name,
-        max_tokens=50,
-        system=_CLAUDE_SYSTEM_PROMPT,
-        tools=[_GROUNDEDNESS_TOOL],
-        tool_choice={"type": "tool", "name": "submit_groundedness_verdict"},
-        messages=[{"role": "user", "content": f'Context: "{context}"\n\nReply: "{reply_text}"'}],
-    )
+    with tracer.start_as_current_span("claude_assess_groundedness") as span:
+        span.set_attribute("gen_ai.system", "anthropic")
+        span.set_attribute("gen_ai.request.model", settings.claude_model_name)
+        message = client.messages.create(
+            model=settings.claude_model_name,
+            max_tokens=50,
+            system=_CLAUDE_SYSTEM_PROMPT,
+            tools=[_GROUNDEDNESS_TOOL],
+            tool_choice={"type": "tool", "name": "submit_groundedness_verdict"},
+            messages=[{"role": "user", "content": f'Context: "{context}"\n\nReply: "{reply_text}"'}],
+        )
+        span.set_attribute("gen_ai.usage.input_tokens", message.usage.input_tokens)
+        span.set_attribute("gen_ai.usage.output_tokens", message.usage.output_tokens)
     tool_use_block = next((b for b in message.content if b.type == "tool_use"), None)
     if tool_use_block is None:
         # Same fail-safe default as the Ollama path: no verdict means

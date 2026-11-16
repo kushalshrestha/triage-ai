@@ -190,8 +190,26 @@ as placeholder text by the time you're presenting the project.
   per decision (ADR-0010), alongside `model_used`.
   `scripts/cost_report.py` (`docker compose exec api python
   scripts/cost_report.py`) prints the Ollama-vs-Claude comparison
-  `project-brief.md` asks for — a report generator, not a live
-  dashboard (see Open questions: tracing).
+  `project-brief.md` asks for — a historical report generator, not
+  live per-call tracing; see the next bullet for that.
+- **Tracing/observability (Phase 27, ADR-0030):** real per-call
+  tracing now exists — OpenTelemetry instrumentation (GenAI semantic
+  conventions: `gen_ai.system`, `gen_ai.request.model`,
+  `gen_ai.usage.input_tokens`/`output_tokens`) across every model-call
+  site, exported to self-hosted Jaeger (`docker compose`, UI at
+  `localhost:16686`) rather than project-brief.md's named Langfuse —
+  Langfuse's current self-hosted footprint is a bigger infra lift than
+  this project's scale justifies (same reasoning as ADR-0017's
+  deferred task queue), and OTel's vendor neutrality means the backend
+  can change later without touching instrumentation code. One real
+  trace: `run_triage` → `ollama_generate` → `claude_classify` →
+  `claude_generate_draft` → `claude_assess_groundedness`, each with
+  real token counts — the `ollama_generate`/`claude_classify`
+  sequence visibly shows ADR-0023's classification fallback firing in
+  real time, not just inferable after the fact from `model_used`.
+  `scripts/cost_report.py` stays as-is — historical aggregation and
+  live tracing answer different questions, not a replacement
+  relationship.
 - **Prompt versioning (Phase 21, ADR-0024):** each prompt
   (`app/agent/classify.py`, `drafting.py`, `judge.py`,
   `contextualize.py`) has a `PROMPT_VERSION` constant, recorded on
@@ -404,9 +422,7 @@ as placeholder text by the time you're presenting the project.
 ## Open questions
 Track unresolved design decisions here until they're settled, then
 move the resolution into an ADR.
-- **Tracing / cost dashboard:** `project-brief.md`'s tech stack names
-  Langfuse (or similar) for per-call tracing; `scripts/cost_report.py`
-  (ADR-0010) is a deliberately minimal stand-in — a report generator
-  run on demand, not a live dashboard with per-call traces. Standing up
-  real tracing is a bigger infra lift (a new service, an integration
-  point in every model call site) than any pass so far has scoped in.
+
+None currently open — **Tracing / cost dashboard** (the long-standing
+item here since Phase 7) was resolved in Phase 27; see "Model routing
+(LLMOps)" above and ADR-0030.

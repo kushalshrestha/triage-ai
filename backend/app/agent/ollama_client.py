@@ -16,6 +16,7 @@ something latency-sensitive. See ADR-0009.
 import httpx
 
 from app.config import get_settings
+from app.tracing import tracer
 
 
 def generate_raw(prompt: str) -> str:
@@ -23,21 +24,34 @@ def generate_raw(prompt: str) -> str:
     response is stored/displayed as-is (e.g. contextual retrieval's
     chunk-context blurb, see ADR-0015) rather than pattern-matched
     against known lowercase keywords like `generate()`'s callers do.
+
+    The one shared funnel every Ollama caller goes through — a single
+    span here (ADR-0030) covers every Ollama call site for free.
     """
     settings = get_settings()
-    response = httpx.post(
-        f"{settings.ollama_base_url}/api/generate",
-        json={
-            "model": settings.ollama_model_name,
-            "prompt": prompt,
-            "stream": False,
-            "options": {"temperature": 0},
-            "keep_alive": 0,
-        },
-        timeout=60.0,
-    )
-    response.raise_for_status()
-    return response.json()["response"].strip()
+    with tracer.start_as_current_span("ollama_generate") as span:
+        span.set_attribute("gen_ai.system", "ollama")
+        span.set_attribute("gen_ai.request.model", settings.ollama_model_name)
+        response = httpx.post(
+            f"{settings.ollama_base_url}/api/generate",
+            json={
+                "model": settings.ollama_model_name,
+                "prompt": prompt,
+                "stream": False,
+                "options": {"temperature": 0},
+                "keep_alive": 0,
+            },
+            timeout=60.0,
+        )
+        response.raise_for_status()
+        body = response.json()
+        # Already returned by Ollama, previously discarded — real
+        # token counts, not estimated.
+        if "prompt_eval_count" in body:
+            span.set_attribute("gen_ai.usage.input_tokens", body["prompt_eval_count"])
+        if "eval_count" in body:
+            span.set_attribute("gen_ai.usage.output_tokens", body["eval_count"])
+        return body["response"].strip()
 
 
 def generate(prompt: str) -> str:

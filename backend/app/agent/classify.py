@@ -28,6 +28,7 @@ from anthropic import Anthropic
 
 from app.agent.ollama_client import generate
 from app.config import get_settings
+from app.tracing import tracer
 
 logger = logging.getLogger(__name__)
 
@@ -155,14 +156,19 @@ def _classify_ticket_claude(text: str) -> str:
     # why this matters for a fair comparison against Ollama's approach).
     settings = get_settings()
     client = Anthropic(api_key=settings.anthropic_api_key)
-    message = client.messages.create(
-        model=settings.claude_model_name,
-        max_tokens=50,
-        system=_CLAUDE_SYSTEM_PROMPT,
-        tools=[_CLASSIFY_TOOL],
-        tool_choice={"type": "tool", "name": "classify_ticket"},
-        messages=[{"role": "user", "content": f'Ticket: "{text}"'}],
-    )
+    with tracer.start_as_current_span("claude_classify") as span:
+        span.set_attribute("gen_ai.system", "anthropic")
+        span.set_attribute("gen_ai.request.model", settings.claude_model_name)
+        message = client.messages.create(
+            model=settings.claude_model_name,
+            max_tokens=50,
+            system=_CLAUDE_SYSTEM_PROMPT,
+            tools=[_CLASSIFY_TOOL],
+            tool_choice={"type": "tool", "name": "classify_ticket"},
+            messages=[{"role": "user", "content": f'Ticket: "{text}"'}],
+        )
+        span.set_attribute("gen_ai.usage.input_tokens", message.usage.input_tokens)
+        span.set_attribute("gen_ai.usage.output_tokens", message.usage.output_tokens)
     tool_use_block = next((b for b in message.content if b.type == "tool_use"), None)
     if tool_use_block is None:
         return DEFAULT_CATEGORY

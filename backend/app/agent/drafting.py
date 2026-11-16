@@ -4,6 +4,7 @@ from anthropic import Anthropic, APIError
 from pydantic import BaseModel, ValidationError
 
 from app.config import get_settings
+from app.tracing import tracer
 
 PROMPT_VERSION = "v1"
 
@@ -93,25 +94,30 @@ def generate_draft(
         f"Call submit_draft with your reply."
     )
 
-    try:
-        message = client.messages.create(
-            model=settings.claude_model_name,
-            max_tokens=500,
-            system=_SYSTEM_PROMPT,
-            tools=[_DRAFT_TOOL],
-            tool_choice={"type": "tool", "name": "submit_draft"},
-            messages=[{"role": "user", "content": user_message}],
+    with tracer.start_as_current_span("claude_generate_draft") as span:
+        span.set_attribute("gen_ai.system", "anthropic")
+        span.set_attribute("gen_ai.request.model", settings.claude_model_name)
+        try:
+            message = client.messages.create(
+                model=settings.claude_model_name,
+                max_tokens=500,
+                system=_SYSTEM_PROMPT,
+                tools=[_DRAFT_TOOL],
+                tool_choice={"type": "tool", "name": "submit_draft"},
+                messages=[{"role": "user", "content": user_message}],
+            )
+        except APIError as exc:
+            # An unreachable/rate-limited/erroring Claude API is treated as
+            # a draft-schema failure (see ADR-0028) — reuses the existing
+            # escalate-on-DraftSchemaError path in orchestrator.py rather
+            # than crashing the whole triage request. No usage info is
+            # available since the call never completed.
+            raise DraftSchemaError(f"Claude drafting call failed: {exc}") from exc
+        usage = ClaudeUsage(
+            input_tokens=message.usage.input_tokens, output_tokens=message.usage.output_tokens
         )
-    except APIError as exc:
-        # An unreachable/rate-limited/erroring Claude API is treated as
-        # a draft-schema failure (see ADR-0028) — reuses the existing
-        # escalate-on-DraftSchemaError path in orchestrator.py rather
-        # than crashing the whole triage request. No usage info is
-        # available since the call never completed.
-        raise DraftSchemaError(f"Claude drafting call failed: {exc}") from exc
-    usage = ClaudeUsage(
-        input_tokens=message.usage.input_tokens, output_tokens=message.usage.output_tokens
-    )
+        span.set_attribute("gen_ai.usage.input_tokens", usage.input_tokens)
+        span.set_attribute("gen_ai.usage.output_tokens", usage.output_tokens)
 
     tool_use_block = next((b for b in message.content if b.type == "tool_use"), None)
     if tool_use_block is None:

@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     # set), not guessed in advance.
     injection_classifier_model_name: str = "protectai/deberta-v3-base-prompt-injection-v2"
     injection_classifier_threshold: float = 0.97
+    # See ADR-0030 — OTLP gRPC endpoint, self-hosted Jaeger by default.
+    otel_service_name: str = "triageai-api"
+    otel_exporter_endpoint: str = "http://jaeger:4317"
 
 
 @lru_cache

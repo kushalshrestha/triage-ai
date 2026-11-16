@@ -566,6 +566,27 @@ itself. The real Ollama-vs-Claude cost/latency story
 numbers mean much — this report is the mechanism for producing that
 comparison once there is some, not the final comparison itself.
 
+### Real tracing (Phase 27, ADR-0030)
+
+The report above is historical, point-in-time aggregation —
+OpenTelemetry instrumentation + self-hosted Jaeger now also provide
+live, per-request tracing alongside it (`localhost:16686`). A real
+captured trace for a `draft_for_review` ticket:
+
+```
+run_triage (27.8s total)
+  ├─ ollama_generate            192 in / 2 out tokens
+  ├─ claude_classify             793 in / 33 out tokens
+  ├─ claude_generate_draft       942 in / 135 out tokens
+  └─ claude_assess_groundedness  849 in / 34 out tokens
+```
+
+The `ollama_generate` → `claude_classify` sequence in this one trace
+is ADR-0023's classification fallback actually firing — Ollama's
+output didn't parse, so Claude was called for just this ticket,
+visible as the real causal sequence in a trace instead of only
+inferable after the fact from `agent_decisions.model_used`.
+
 ## Known limitations
 
 Carried over honestly from `ai-architecture.md`'s Open Questions —
@@ -578,10 +599,10 @@ not fixed by writing this report:
   prompt rewrites could fix. Worth keeping in mind whenever citing this
   project's guardrail coverage — the judge reliably catches blatant
   fabrication, not subtle mismatches.
-- **Tracing / cost dashboard**: this report is a point-in-time script
-  run on demand, not live per-call tracing (Langfuse or similar,
-  per `project-brief.md`'s tech stack) — a bigger infra lift not yet
-  scoped in.
+- **Tracing / cost dashboard**: resolved in Phase 27 (ADR-0030) — see
+  its own subsection above. Real per-call tracing now exists
+  (OpenTelemetry + self-hosted Jaeger), alongside (not replacing) this
+  report's historical aggregation.
 - **Regression baseline snapshots**: resolved in Phase 21 (ADR-0024) —
   see its own subsection above. Scoped to the 2 evals with real
   prompt-variant experiment history (classification, groundedness);

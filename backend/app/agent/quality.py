@@ -13,6 +13,7 @@ from anthropic import Anthropic
 
 from app.agent.ollama_client import generate
 from app.config import get_settings
+from app.tracing import tracer
 
 PROMPT_VERSION = "v1"
 RATINGS = (1, 2, 3, 4, 5)
@@ -110,19 +111,24 @@ def _assess_quality_claude(reply_text: str, ticket_text: str, context: str) -> t
     # from real rating quality).
     settings = get_settings()
     client = Anthropic(api_key=settings.anthropic_api_key)
-    message = client.messages.create(
-        model=settings.claude_model_name,
-        max_tokens=50,
-        system=_CLAUDE_SYSTEM_PROMPT,
-        tools=[_QUALITY_TOOL],
-        tool_choice={"type": "tool", "name": "submit_quality_rating"},
-        messages=[
-            {
-                "role": "user",
-                "content": f'Context: "{context}"\n\nTicket: "{ticket_text}"\n\nReply: "{reply_text}"',
-            }
-        ],
-    )
+    with tracer.start_as_current_span("claude_assess_quality") as span:
+        span.set_attribute("gen_ai.system", "anthropic")
+        span.set_attribute("gen_ai.request.model", settings.claude_model_name)
+        message = client.messages.create(
+            model=settings.claude_model_name,
+            max_tokens=50,
+            system=_CLAUDE_SYSTEM_PROMPT,
+            tools=[_QUALITY_TOOL],
+            tool_choice={"type": "tool", "name": "submit_quality_rating"},
+            messages=[
+                {
+                    "role": "user",
+                    "content": f'Context: "{context}"\n\nTicket: "{ticket_text}"\n\nReply: "{reply_text}"',
+                }
+            ],
+        )
+        span.set_attribute("gen_ai.usage.input_tokens", message.usage.input_tokens)
+        span.set_attribute("gen_ai.usage.output_tokens", message.usage.output_tokens)
     tool_use_block = next((b for b in message.content if b.type == "tool_use"), None)
     if tool_use_block is None:
         return None, "(no tool call)"

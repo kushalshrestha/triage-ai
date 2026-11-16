@@ -5,6 +5,7 @@ from anthropic import Anthropic
 
 from app.agent.ollama_client import generate_raw
 from app.config import get_settings
+from app.tracing import tracer
 
 PROMPT_VERSION = "v1"
 
@@ -82,30 +83,35 @@ def _generate_chunk_context_claude(
     settings = get_settings()
     client = Anthropic(api_key=settings.anthropic_api_key)
 
-    message = client.messages.create(
-        model=settings.claude_model_name,
-        max_tokens=200,
-        temperature=0.0,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": _DOCUMENT_CONTEXT_PROMPT.format(doc_content=document_content),
-                        "cache_control": {"type": "ephemeral"},
-                    },
-                    {
-                        "type": "text",
-                        "text": _CHUNK_CONTEXT_PROMPT.format(chunk_content=chunk_content),
-                    },
-                ],
-            }
-        ],
-    )
-    usage = ClaudeUsage(
-        input_tokens=message.usage.input_tokens, output_tokens=message.usage.output_tokens
-    )
+    with tracer.start_as_current_span("claude_contextualize_chunk") as span:
+        span.set_attribute("gen_ai.system", "anthropic")
+        span.set_attribute("gen_ai.request.model", settings.claude_model_name)
+        message = client.messages.create(
+            model=settings.claude_model_name,
+            max_tokens=200,
+            temperature=0.0,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": _DOCUMENT_CONTEXT_PROMPT.format(doc_content=document_content),
+                            "cache_control": {"type": "ephemeral"},
+                        },
+                        {
+                            "type": "text",
+                            "text": _CHUNK_CONTEXT_PROMPT.format(chunk_content=chunk_content),
+                        },
+                    ],
+                }
+            ],
+        )
+        usage = ClaudeUsage(
+            input_tokens=message.usage.input_tokens, output_tokens=message.usage.output_tokens
+        )
+        span.set_attribute("gen_ai.usage.input_tokens", usage.input_tokens)
+        span.set_attribute("gen_ai.usage.output_tokens", usage.output_tokens)
     text_block = next((b for b in message.content if b.type == "text"), None)
     context = text_block.text.strip() if text_block is not None else ""
     return context, usage

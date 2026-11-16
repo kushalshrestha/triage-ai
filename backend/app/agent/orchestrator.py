@@ -22,6 +22,7 @@ from app.models import (
     TicketStatus,
 )
 from app.rag.retrieval import retrieve_relevant_chunks
+from app.tracing import tracer
 
 
 def decide_outcome(top_similarity: float | None) -> DecisionType:
@@ -65,6 +66,22 @@ def citation_meets_confidence_bar(decision_type: DecisionType, min_cited_similar
 
 
 def run_triage(db: Session, ticket: Ticket) -> AgentDecision:
+    """Parent span for the whole pipeline (see ADR-0030) — every model
+    call inside `_run_triage` opens its own child span, so a trace for
+    one ticket shows the real waterfall: HTTP request -> run_triage ->
+    classify/draft/groundedness, each with real latency and token data.
+    """
+    with tracer.start_as_current_span("run_triage") as span:
+        span.set_attribute("ticket.id", str(ticket.id))
+        decision = _run_triage(db, ticket)
+        span.set_attribute("triage.decision_type", decision.decision_type.value)
+        span.set_attribute("triage.model_used", decision.model_used)
+        if decision.confidence_score is not None:
+            span.set_attribute("triage.confidence_score", decision.confidence_score)
+        return decision
+
+
+def _run_triage(db: Session, ticket: Ticket) -> AgentDecision:
     start_time = time.monotonic()
     raw_text = f"{ticket.subject}\n{ticket.body}"
 
