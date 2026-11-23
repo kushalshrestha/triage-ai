@@ -317,8 +317,8 @@ as placeholder text by the time you're presenting the project.
 
 ## Guardrails and safety
 - **Input side:** injection detection (`app/guardrails/injection.py`)
-  and PII redaction (`app/guardrails/pii.py`) — both pattern-based by
-  default. **Injection classifier added (Phase 28, ADR-0031):**
+  and PII redaction (`app/guardrails/pii.py`). **Injection classifier
+  added (Phase 28, ADR-0031):**
   `is_likely_injection(text, use_classifier=True)` — a real,
   pre-trained prompt-injection model
   (`protectai/deberta-v3-base-prompt-injection-v2`, local via
@@ -332,9 +332,24 @@ as placeholder text by the time you're presenting the project.
   same treatment as hybrid search/contextual retrieval/re-ranking
   (ADR-0013/0015/0016): correctly implemented and rigorously measured,
   not proven net-beneficial enough to enable by default yet.
-  `orchestrator.py` is unaffected (calls with the default). PII
-  redaction's classifier upgrade (Presidio) remains a separate, later,
-  unscoped phase — a different ML stack (NER vs. text classification).
+  `orchestrator.py` is unaffected (calls with the default).
+  **PII redaction classifier added, enabled by default (Phase 29,
+  ADR-0032):** `redact_pii`/`contains_pii(text, use_classifier=True)`
+  — a real Presidio/spaCy NER classifier (`en_core_web_lg`) catches
+  names, SSNs, addresses, and IP addresses the regex structurally
+  can't; ORed with the pattern floor for email/phone/credit-card.
+  Same realistic-ticket golden-set discipline as Phase 28, built in
+  from the start this time: real measurement reversed the initial
+  "right-sized" small-model plan (`en_core_web_sm` misclassified a
+  brand name as a location at the same confidence as genuine matches
+  — no threshold fix possible, same lesson as ADR-0031) in favor of
+  the larger model, which still measured a real but much milder
+  ~5.6% false-positive rate (one redacted word in an otherwise fully
+  processed ticket, not a whole-ticket escalation bypass like
+  injection's false positives) — **enabled by default** as a result,
+  the opposite conclusion from Phase 28, reached through the same
+  rigor. `orchestrator.py` needed zero changes — it already calls
+  both functions with no override.
   **Fixed (Phase 24, ADR-0027):** PII redaction was applied before
   retrieval/classification but not before the Claude drafting call —
   `generate_draft()` took the raw `Ticket` object and built its prompt
