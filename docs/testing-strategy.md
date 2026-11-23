@@ -93,6 +93,16 @@ project's `starlette` version) only surfaced when actually exercising
 the instrumentation against real requests, confirming that a plain
 import check isn't sufficient verification for this layer.
 
+As of Phase 29 (ADR-0032), `app/guardrails/pii.py`'s Presidio-based
+classifier follows the mirror-image structure: a `realistic_clean`
+golden-set category (18 examples) measures the real false-positive
+rate (~5.6%), and `test_pii_redaction_eval.py` gates the *production
+default* (classifier enabled) rather than a pattern-only baseline —
+unlike Phase 28, real measurement here supported enabling by default,
+so the roles of the two eval files are swapped: the production gate
+tests the classifier-enabled path, and the comparison file documents
+the pattern-only fallback instead.
+
 ## What NOT to do
 Don't try to unit-test raw model output with exact-match assertions —
 it will be flaky by construction and teaches the wrong lesson about

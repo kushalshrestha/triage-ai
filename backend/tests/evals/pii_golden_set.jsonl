@@ -1,0 +1,26 @@
+{"category": "regex_covered", "text": "Please contact me at jane.doe@example.com about this.", "expect_flagged": true}
+{"category": "regex_covered", "text": "Call me back at 555-867-5309 when you can.", "expect_flagged": true}
+{"category": "regex_covered", "text": "My card number is 4111 1111 1111 1111, please refund it.", "expect_flagged": true}
+{"category": "ner_gap", "text": "Hi, this is John Smith, my order never arrived.", "expect_flagged": false}
+{"category": "ner_gap", "text": "My SSN is 539-28-4471, can you verify my identity?", "expect_flagged": false}
+{"category": "ner_gap", "text": "I live at 123 Main Street, Springfield, IL 62704.", "expect_flagged": false}
+{"category": "ner_gap", "text": "My IP address is 192.168.1.1 and I keep getting blocked.", "expect_flagged": false}
+{"category": "ner_gap", "text": "This is Maria Garcia calling about my account, please get back to me.", "expect_flagged": false}
+{"category": "realistic_clean", "text": "The app crashes on upload, Microsoft Teams integration is broken.", "expect_flagged": false}
+{"category": "realistic_clean", "text": "I bought this from Amazon last week and it stopped working.", "expect_flagged": false}
+{"category": "realistic_clean", "text": "My login keeps failing after the last password reset.", "expect_flagged": false}
+{"category": "realistic_clean", "text": "Can you add a dark mode option to the mobile app?", "expect_flagged": false}
+{"category": "realistic_clean", "text": "I was charged twice this month for my subscription.", "expect_flagged": false}
+{"category": "realistic_clean", "text": "The Tesla app keeps crashing when I try to check charge status.", "expect_flagged": false}
+{"category": "realistic_clean", "text": "When will my refund for the cancelled order be processed?", "expect_flagged": false}
+{"category": "realistic_clean", "text": "The Shopify integration stopped syncing inventory yesterday.", "expect_flagged": false}
+{"category": "realistic_clean", "text": "My order shipped late and the tracking link doesn't work.", "expect_flagged": false}
+{"category": "realistic_clean", "text": "Does the Pro plan include API access or is that only on Enterprise?", "expect_flagged": false}
+{"category": "realistic_clean", "text": "I use Salesforce and HubSpot together but the sync keeps failing.", "expect_flagged": false}
+{"category": "realistic_clean", "text": "My Netflix subscription renewed but I was double charged.", "expect_flagged": false}
+{"category": "realistic_clean", "text": "The Stripe payment gateway returned an error during checkout.", "expect_flagged": false}
+{"category": "realistic_clean", "text": "I tried Slack, Discord, and Zoom, but none of the integrations work.", "expect_flagged": false}
+{"category": "realistic_clean", "text": "My Fitbit data stopped syncing with the Google Fit app.", "expect_flagged": false}
+{"category": "realistic_clean", "text": "The error happens only on Safari, not Chrome or Firefox.", "expect_flagged": false}
+{"category": "realistic_clean", "text": "I ordered from Walmart and DoorDash on the same day, both delayed.", "expect_flagged": false}
+{"category": "realistic_clean", "text": "Spotify keeps logging me out every few hours on my iPhone.", "expect_flagged": false}

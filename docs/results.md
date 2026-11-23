@@ -488,6 +488,40 @@ gave hybrid search, contextual retrieval, and cross-encoder
 re-ranking: implemented, measured, not force-enabled because the
 numbers say so.
 
+### PII redaction classifier (Phase 29, ADR-0032)
+
+Added Microsoft Presidio (spaCy NER) to catch names, SSNs, addresses,
+and IP addresses — PII with no fixed syntactic shape the regex can
+ever match. Built the `realistic_clean` golden-set category from the
+start this time (18 examples, not added reactively after a failure
+like Phase 28's `realistic_benign`).
+
+Two real findings changed the plan mid-flight:
+- The originally-planned "right-sized" small model (`en_core_web_sm`)
+  misclassified a brand name ("Shopify") as `LOCATION` at the exact
+  same confidence (0.85) as genuine matches — switched to the larger
+  `en_core_web_lg`, which fixed that case.
+- Even the larger model wasn't perfect: expanding the realistic-ticket
+  set surfaced one more miss ("Slack" as `PERSON`).
+
+| Category | Pattern-only | Classifier enabled (production default) |
+|---|---|---|
+| `regex_covered` | 100% | 100% |
+| `ner_gap` | 0% | **100%** |
+| `realistic_clean` | 100% | **94.4%** (17/18) |
+
+Unlike Phase 28's injection classifier, this one is **enabled by
+default**. Same rigor, different real numbers, different conclusion:
+the false-positive rate is lower (~5.6% vs. ~17%) and the consequence
+per false positive is far milder — a PII false positive just costs one
+redacted word in a ticket that's still fully processed; an injection
+false positive causes a whole-ticket escalation that skips the AI
+pipeline entirely. Weighed against the real privacy benefit of
+catching a name or SSN before it reaches Claude's API, this nets out
+favorably where the injection classifier didn't. `orchestrator.py`
+needed zero changes. This closes the last of the 4 deferred
+enhancements tracked in `docs/capability-roadmap.md`.
+
 ### PII redaction leak into drafting (Phase 24, ADR-0027)
 
 A real, confirmed bug, found while auditing Input guardrails: redaction
